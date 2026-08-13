@@ -1,0 +1,31 @@
+name = "caftan-gharnata"
+main = ".open-next/worker.js"
+compatibility_date = "2026-08-08"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "caftan-gharnata-db"
+database_id = "cdfcca5a-2f69-4a16-a406-cfe957e35f85"
+migrations_dir = "cloudflare/migrations"
+
+# Cloudflare R2 Bucket binding
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "caftan-granada-media"
+
+# Assets compiled by OpenNext (the statically-generated site)
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# Self-reference so the worker can call itself (RSC payloads, route handlers)
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "caftan-gharnata"
+
+# Employs fail-closed behaviour from the app code (SESSION_SECRET / password)
+[vars]
+NEXTJS_ENV = "production"
+NODE_ENV = "production"

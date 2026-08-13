@@ -5,8 +5,8 @@
   --color-accent: #D4AF37;
   --color-background: #F9F6F0;
   --color-card: #FFFFFF;
-  
-  --font-amiri: var(--font-amiri);
+
+  --font-noto-arabic: var(--font-noto-arabic);
 }
 
 :root {
@@ -23,19 +23,86 @@
 html {
   overflow-x: clip;
   max-width: 100%;
+  transition: color 0.4s ease, background-color 0.4s ease;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-amiri), serif;
+  font-family: var(--font-noto-arabic), sans-serif;
   overflow-x: clip;
   max-width: 100%;
   width: 100%;
   position: relative;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Smooth theme transitions for cards, shadows, and borders */
+.shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl {
+  transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.bg-background, .bg-white, .bg-gray-50, .bg-gray-100 {
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 /* Prevent any element from causing horizontal overflow */
 img, video, svg {
   max-width: 100%;
 }
+
+/* Infinite horizontal marquee animation */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 22s linear infinite;
+}
+
+/* Hide scrollbar for native scroll containers */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   LUXURY GOLD CUSTOM SCROLLBAR (Ultra-thin 5px, No Arrows)
+   --------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b0b10;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.5);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.9);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 175, 55, 0.5) #0b0b10;
+}
+
+/* ---------------------------------------------------------------------------
+   LIGHT MODE ONLY — dark mode was removed per client request.
+   --------------------------------------------------------------------------- */
