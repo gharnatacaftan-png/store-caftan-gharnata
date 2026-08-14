@@ -21,7 +21,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [selectedSize, setSelectedSize] = useState("M");
+  const [selectedSize, setSelectedSize] = useState<string>("");
   const [selectedColor, setSelectedColor] = useState("");
   const [mainImage, setMainImage] = useState("");
   const [isZoomed, setIsZoomed] = useState(false);

@@ -24,7 +24,8 @@ export const metadata: Metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // `maximumScale` is intentionally omitted so mobile users can pinch-to-zoom
+  // product photos (lightbox) on the store product page.
 };
 
 // Language is persisted as a cookie (written by LangProvider on every pick), so

@@ -2,6 +2,7 @@
 import { rejectUnsafeAdminRequest } from "@/lib/admin-api";
 import { sendTestTelegramNotification } from "@/lib/notifications";
 import { getSiteSettings } from "@/lib/settings";
+import { d1Execute } from "@/lib/db";
 import { okResponse, errorResponse } from "@/lib/security";
 
 export const runtime = "nodejs";
@@ -22,7 +23,28 @@ export async function POST(req: NextRequest) {
       process.env.TELEGRAM_BOT_TOKEN?.trim() ||
       settings.telegram_bot_token?.trim() ||
       "";
-    const chatId = String(body.chatId || "").trim();
+    const chatId = String(body.chatId || "").trim().replace(/\s+/g, "");
+
+    // Persist the chat id the admin is validating so that it becomes the
+    // exact value used by order notifications (/api/orders reads
+    // `settings.telegram_chat_id` from this same D1 row). Otherwise the
+    // "Test message" would pass while the next order still goes to a stale id.
+    try {
+      const up = await d1Execute(
+        `UPDATE site_settings SET telegram_chat_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'store'`,
+        [chatId]
+      );
+      if (up.changes === 0) {
+        await d1Execute(
+          `INSERT OR IGNORE INTO site_settings (id, phone1, phone2, whatsapp, instagram, telegram_chat_id, telegram_enabled, phone1_enabled, instagram_enabled, updated_at)
+           VALUES ('store', '0561234567', '0671234567', '213561234567', 'https://instagram.com/caftan_granada', ?, 1, 1, 1, CURRENT_TIMESTAMP)`,
+          [chatId]
+        );
+      }
+    } catch (persistErr) {
+      // Non-fatal: the test still sends so the admin sees whether the chat is reachable.
+      console.warn("[test-telegram] could not persist chat_id to D1:", persistErr);
+    }
 
     const result = await sendTestTelegramNotification(botToken, chatId);
     if (result.ok) return okResponse({ ok: true });
