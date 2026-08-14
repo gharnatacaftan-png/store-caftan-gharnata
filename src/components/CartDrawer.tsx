@@ -134,12 +134,12 @@ export default function CartDrawer() {
           />
 
           {/* Panel */}
-          <motion.aside
+            <motion.aside
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.35, ease: "easeInOut" }}
-            className="fixed top-0 right-0 bottom-0 z-[95] w-full max-w-md bg-white shadow-2xl flex flex-col"
+            className="fixed top-0 right-0 bottom-0 z-[95] w-full sm:max-w-sm md:max-w-md bg-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
             dir={dir}
           >
             {/* Header */}
@@ -225,11 +225,11 @@ export default function CartDrawer() {
                           {line.color && <><span className="mx-1">·</span>{tx.common("color")}: <b>{line.color}</b></>}
                         </p>
                         <div className="flex items-center justify-between mt-2">
-                          <div className="flex items-center border border-gray-200 rounded-lg">
-                            <button onClick={() => updateQty(line.key, line.quantity - 1)} className="p-1.5 text-gray-500 hover:text-accent" aria-label="−"><Minus className="w-3.5 h-3.5" /></button>
-                            <span className="w-8 text-center text-sm font-bold text-primary">{line.quantity}</span>
-                            <button onClick={() => updateQty(line.key, line.quantity + 1)} className="p-1.5 text-gray-500 hover:text-accent" aria-label="+"><Plus className="w-3.5 h-3.5" /></button>
-                          </div>
+                        <div className="flex items-center border border-gray-200 rounded-lg">
+                          <button onClick={() => updateQty(line.key, line.quantity - 1)} className="p-2 sm:p-2.5 text-gray-500 hover:text-accent" aria-label="−"><Minus className="w-4 h-4 sm:w-5 sm:h-5" /></button>
+                          <span className="w-9 sm:w-10 text-center text-sm font-bold text-primary">{line.quantity}</span>
+                          <button onClick={() => updateQty(line.key, line.quantity + 1)} className="p-2 sm:p-2.5 text-gray-500 hover:text-accent" aria-label="+"><Plus className="w-4 h-4 sm:w-5 sm:h-5" /></button>
+                        </div>
                           <span className="font-bold text-accent text-sm">
                             {(line.price * line.quantity).toLocaleString(lang === "ar" ? "ar-DZ" : "fr-FR")} {tx.common("currency")}
                           </span>
@@ -273,18 +273,18 @@ export default function CartDrawer() {
                   </div>
 
                   {/* Delivery type */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <button type="button" onClick={() => handleDeliveryTypeChange("domicile")}
-                      className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 transition-all text-xs font-bold ${deliveryType === "domicile" ? "border-accent bg-accent/5 text-primary" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-                      <Home className={`w-5 h-5 ${deliveryType === "domicile" ? "text-accent" : "text-gray-400"}`} />
-                      {tx.product("home_delivery")}
-                    </button>
-                    <button type="button" onClick={() => handleDeliveryTypeChange("bureau")}
-                      className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 transition-all text-xs font-bold ${deliveryType === "bureau" ? "border-accent bg-accent/5 text-primary" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-                      <Building2 className={`w-5 h-5 ${deliveryType === "bureau" ? "text-accent" : "text-gray-400"}`} />
-                      {tx.product("bureau_delivery")}
-                    </button>
-                  </div>
+                   <div className="grid grid-cols-2 gap-3">
+                     <button type="button" onClick={() => handleDeliveryTypeChange("domicile")}
+                       className={`flex flex-col items-center gap-1 p-3 sm:p-3.5 rounded-xl border-2 transition-all text-xs sm:text-sm font-bold ${deliveryType === "domicile" ? "border-accent bg-accent/5 text-primary" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+                       <Home className={`w-5 h-5 sm:w-6 sm:h-6 ${deliveryType === "domicile" ? "text-accent" : "text-gray-400"}`} />
+                       {tx.product("home_delivery")}
+                     </button>
+                     <button type="button" onClick={() => handleDeliveryTypeChange("bureau")}
+                       className={`flex flex-col items-center gap-1 p-3 sm:p-3.5 rounded-xl border-2 transition-all text-xs sm:text-sm font-bold ${deliveryType === "bureau" ? "border-accent bg-accent/5 text-primary" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+                       <Building2 className={`w-5 h-5 sm:w-6 sm:h-6 ${deliveryType === "bureau" ? "text-accent" : "text-gray-400"}`} />
+                       {tx.product("bureau_delivery")}
+                     </button>
+                   </div>
 
                   {/* Totals */}
                   <div className="bg-white border border-gray-100 rounded-xl p-3 text-sm space-y-1.5">
