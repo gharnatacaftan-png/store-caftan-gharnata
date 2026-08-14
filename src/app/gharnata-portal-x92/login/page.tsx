@@ -1,17 +1,19 @@
 "use client";
 import { useState } from "react";
-import { useFormStatus } from "react-dom";
 import { loginAction } from "../actions";
 import { Eye, EyeOff, Lock, LogIn } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 
-// SubmitButton is a child of the <form>, so useFormStatus() reliably reflects the
-// in-flight state of the form action — the spinner shows from the very first
-// millisecond and the input is disabled while the ~1s bcrypt verify runs.
-function SubmitButton() {
-  const { pending } = useFormStatus();
+// SubmitButton reflects the LOCAL `pending` flag driven by the form handler.
+// We intentionally don't use useFormStatus() here: the form action is a client
+// handler (handleSubmit) that calls the server action (loginAction) directly, and
+// React only flips useFormStatus's pending flag for native server-action
+// submissions. With the previous approach the spinner never appeared and the
+// button stayed enabled, so users double-clicked the first time thinking nothing
+// had happened (the ~1s bcrypt verify felt "stuck"). Local pending fixes that.
+function SubmitButton({ pending }: { pending: boolean }) {
   const { lang } = useLang();
   const tx = t(lang);
 
@@ -43,9 +45,11 @@ export default function LoginPage() {
   const tx = t(lang);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
   async function handleSubmit(formData: FormData) {
     setError("");
+    setPending(true);
     try {
       const result = await loginAction(formData);
       if (result?.error) {
@@ -61,6 +65,8 @@ export default function LoginPage() {
       // Never let a thrown server action leave the form frozen with no feedback.
       console.error("[login] unexpected error:", err);
       setError(tx.admin("login_server_error"));
+    } finally {
+      setPending(false);
     }
   }
 
@@ -126,7 +132,7 @@ export default function LoginPage() {
               </motion.div>
             )}
 
-            <SubmitButton />
+            <SubmitButton pending={pending} />
           </form>
 
           <p className="text-center text-gray-600 text-xs mt-6">
