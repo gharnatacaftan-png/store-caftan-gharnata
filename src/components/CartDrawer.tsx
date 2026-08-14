@@ -139,7 +139,7 @@ export default function CartDrawer() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.35, ease: "easeInOut" }}
-            className="fixed top-0 right-0 bottom-0 z-[95] w-full sm:max-w-sm md:max-w-md bg-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+            className="fixed top-0 right-0 bottom-0 z-[95] w-full sm:w-[90%] sm:max-w-sm md:max-w-md bg-white shadow-2xl flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
             dir={dir}
           >
             {/* Header */}
@@ -199,9 +199,9 @@ export default function CartDrawer() {
                 </Link>
               </div>
             ) : (
-              <>
+              <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
                 {/* ── Line items ────────────────────────────────────── */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                <div className="px-5 py-4 space-y-4">
                   {lines.map((line) => (
                     <div key={line.key} className="flex gap-3 border border-gray-100 rounded-2xl p-3">
                       <div className="relative w-16 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0">
@@ -244,7 +244,7 @@ export default function CartDrawer() {
                 </div>
 
                 {/* ── Checkout ──────────────────────────────────────── */}
-                <form onSubmit={handleCheckout} className="border-t border-gray-100 p-5 space-y-3 bg-gray-50/60">
+                <form onSubmit={handleCheckout} className="border-t border-gray-100 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 bg-gray-50/60">
                   {/* Subtotal */}
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600 font-semibold">{tx.shop("subtotal")}</span>
@@ -313,9 +313,9 @@ export default function CartDrawer() {
                   <p className="text-center text-xs text-gray-400 flex items-center justify-center gap-1">
                     <Truck className="w-3.5 h-3.5" /> {tx.common("cod_payment")}
                   </p>
-                </form>
-              </>
-            )}
+                 </form>
+               </div>
+             )}
           </motion.aside>
         </>
       )}
