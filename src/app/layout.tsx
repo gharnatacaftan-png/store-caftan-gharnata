@@ -198,6 +198,20 @@ export default async function RootLayout({
   return (
     <html lang={initialLang} dir={dir} className={`${notoArabic.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content={SITE_NAME} />
+        <meta property="og:title" content={SITE_NAME} />
+        <meta property="og:description" content={SITE_DESCRIPTION} />
+        <meta property="og:url" content={SITE_URL} />
+        <meta property="og:image" content={`${SITE_URL}/logo.jpg`} />
+        <meta property="og:image:secure_url" content={`${SITE_URL}/logo.jpg`} />
+        <meta property="og:image:type" content="image/jpeg" />
+        <meta property="og:image:width" content="600" />
+        <meta property="og:image:height" content="600" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={SITE_NAME} />
+        <meta name="twitter:description" content={SITE_DESCRIPTION} />
+        <meta name="twitter:image" content={`${SITE_URL}/logo.jpg`} />
         <link rel="preconnect" href="https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev" />
         <Script
