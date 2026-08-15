@@ -2,7 +2,7 @@
 // The actual UI lives in the client component (shop/page.tsx).
 import type { Metadata } from "next";
 
-const SITE_URL = "https://store-caftan-gharnata.pages.dev";
+const SITE_URL = "https://www.caftan-gharnata.com";
 
 export const metadata: Metadata = {
   title: "متجر الملابس التقليدية الجزائرية | Boutique Robes Algériennes",
@@ -16,14 +16,14 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: "متجر قفطان غرناطة | Boutique Caftan Granada",
+    title: "متجر قفطان غرناطة | Boutique Caftan Gharnata",
     description:
       "قفطان، كابيل، بلوزة وهرانية، كراكو — توصيل لجميع ولايات الجزائر. Caftan, robe kabyle, blouza — livraison partout en Algérie.",
     url: `${SITE_URL}/shop`,
     type: "website",
     images: [
       {
-        url: `${SITE_URL}/og-image.jpg`,
+        url: `${SITE_URL}/logo.jpg`,
         width: 1200,
         height: 630,
         alt: "متجر قفطان غرناطة",

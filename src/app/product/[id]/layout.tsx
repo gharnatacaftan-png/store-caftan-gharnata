@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import { dbGetProductById } from "@/lib/products-db";
 
-const SITE_URL = "https://store-caftan-gharnata.pages.dev";
+const SITE_URL = "https://www.caftan-gharnata.com";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -27,8 +27,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const nameAr = product.title;
     const nameFr = product.title_fr || product.title;
     const descAr = product.description?.slice(0, 160) || `قفطان غرناطة — ${nameAr}`;
-    const descFr = product.description_fr?.slice(0, 160) || `Caftan Granada — ${nameFr}`;
-    const image = product.primary_image || product.images?.[0] || `${SITE_URL}/og-image.jpg`;
+    const descFr = product.description_fr?.slice(0, 160) || `Caftan Gharnata — ${nameFr}`;
+    const image = product.primary_image || product.images?.[0] || `${SITE_URL}/logo.jpg`;
     const pageUrl = `${SITE_URL}/product/${product.id}`;
 
     // Determine canonical image URL
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return {
       title: `${nameAr} | ${nameFr} — قفطان غرناطة`,
       description: `${descAr} | ${descFr}`,
-      keywords: [nameAr, nameFr, "قفطان غرناطة", "caftan granada", ...catKw],
+      keywords: [nameAr, nameFr, "قفطان غرناطة", "caftan gharnata", ...catKw],
       alternates: {
         canonical: pageUrl,
         languages: {
@@ -60,7 +60,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         description: descAr,
         url: pageUrl,
         type: "website",
-        siteName: "قفطان غرناطة | Caftan Granada",
+        siteName: "قفطان غرناطة | Caftan Gharnata",
         locale: "ar_DZ",
         images: [
           {
@@ -80,7 +80,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   } catch {
     return {
-      title: "قفطان غرناطة | Caftan Granada",
+      title: "قفطان غرناطة | Caftan Gharnata",
       description: "متجر القفطان الجزائري الأصيل",
     };
   }

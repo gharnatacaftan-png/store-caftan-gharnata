@@ -6,7 +6,7 @@ import { dbGetAllProducts } from "@/lib/products-db";
 export const dynamic = "force-dynamic";
 export const revalidate = 3600; // refresh every hour
 
-const SITE_URL = "https://store-caftan-gharnata.pages.dev";
+const SITE_URL = "https://www.caftan-gharnata.com";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Static pages

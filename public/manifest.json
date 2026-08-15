@@ -1,6 +1,6 @@
 {
   "name": "قفطان غرناطة",
-  "short_name": "Caftan Granada",
+  "short_name": "Caftan Gharnata",
   "description": "متجر القفطان الجزائري الأصيل — Boutique de robes traditionnelles algériennes",
   "start_url": "/",
   "display": "standalone",
@@ -33,7 +33,7 @@
   ],
   "screenshots": [
     {
-      "src": "/og-image.jpg",
+      "src": "/logo.jpg",
       "type": "image/jpeg",
       "sizes": "1200x630",
       "form_factor": "wide"

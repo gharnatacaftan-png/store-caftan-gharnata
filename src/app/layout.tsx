@@ -13,8 +13,8 @@ const notoArabic = Noto_Sans_Arabic({
   display: "swap",
 });
 
-const SITE_URL = "https://store-caftan-gharnata.pages.dev";
-const SITE_NAME = "قفطان غرناطة | Caftan Granada";
+const SITE_URL = "https://www.caftan-gharnata.com";
+const SITE_NAME = "قفطان غرناطة | Caftan Gharnata";
 const SITE_DESCRIPTION =
   "قفطان غرناطة — متجر القفطان الجزائري الأصيل. اكتشفي أرقى التصاميم من قفطان، كابيل، بلوزة وهرانية، كراكو وجلابيب زواج وأفراح. توصيل لجميع ولايات الجزائر. Robes traditionnelles algériennes : caftan, robe kabyle, blouza oranaise, karakou — livraison partout en Algérie.";
 
@@ -26,17 +26,17 @@ export const metadata: Metadata = {
   },
   description: SITE_DESCRIPTION,
   keywords: [
-    "قفطان جزائري", "caftan algérien", "قفطان غرناطة", "caftan granada",
+    "قفطان جزائري", "caftan algérien", "قفطان غرناطة", "caftan gharnata",
     "رداء عروس جزائري", "blouza oranaise", "robe kabyle", "كابيل",
     "كراكو", "karakou", "جلباب", "قفطان زفاف", "robes traditionnelles algériennes",
     "caftan mariage algérie", "قفطان مطرز", "تطريز جزائري", "caftan brodé",
     "متجر قفطان", "boutique caftan algérie", "قفطان بالذهب",
     "robe de mariée algérienne", "قفطان حفلات", "caftan fête algérie",
-    "عين بنيان", "ain benian", "الجزائر العاصمة", "alger",
+    "عين بنيان", "ain benian", "الجزائر العاصمة", "alger", "gharnata",
   ],
-  authors: [{ name: "Caftan Granada", url: SITE_URL }],
-  creator: "Caftan Granada",
-  publisher: "Caftan Granada",
+  authors: [{ name: "Caftan Gharnata", url: SITE_URL }],
+  creator: "Caftan Gharnata",
+  publisher: "Caftan Gharnata",
   category: "fashion",
   applicationName: SITE_NAME,
   openGraph: {
@@ -49,10 +49,10 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: `${SITE_URL}/og-image.jpg`,
+        url: `${SITE_URL}/logo.jpg`,
         width: 1200,
         height: 630,
-        alt: "قفطان غرناطة — Caftan Granada",
+        alt: "قفطان غرناطة — Caftan Gharnata",
         type: "image/jpeg",
       },
     ],
@@ -61,8 +61,8 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: SITE_NAME,
     description: SITE_DESCRIPTION,
-    images: [`${SITE_URL}/og-image.jpg`],
-    creator: "@CaftanGranada",
+    images: [`${SITE_URL}/logo.jpg`],
+    creator: "@CaftanGharnata",
   },
   robots: {
     index: true,
@@ -146,14 +146,14 @@ export default async function RootLayout({
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "ClothingStore",
-    "name": "قفطان غرناطة - Caftan Granada",
-    "alternateName": ["Caftan Granada", "Gharnata Caftan", "قفطان غرناطة"],
+    "name": "قفطان غرناطة - Caftan Gharnata",
+    "alternateName": ["Caftan Gharnata", "Gharnata Caftan", "قفطان غرناطة"],
     "url": SITE_URL,
     "logo": `${SITE_URL}/icon.png`,
-    "image": `${SITE_URL}/og-image.jpg`,
+    "image": `${SITE_URL}/logo.jpg`,
     "description": SITE_DESCRIPTION,
     "telephone": "+213560000000",
-    "email": "caftangranada@gmail.com",
+    "email": "caftangharnata@gmail.com",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "عين بنيان",
@@ -182,8 +182,8 @@ export default async function RootLayout({
     },
     "hasMap": "https://maps.google.com/?q=36.5225,2.8722",
     "sameAs": [
-      "https://www.instagram.com/caftan.granada",
-      "https://www.facebook.com/caftan.granada",
+      "https://www.instagram.com/caftan.gharnata",
+      "https://www.facebook.com/caftan.gharnata",
     ],
     "potentialAction": {
       "@type": "SearchAction",

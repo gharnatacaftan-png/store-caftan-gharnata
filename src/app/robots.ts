@@ -1,7 +1,7 @@
 // app/robots.ts — Native Next.js robots.txt (replaces the /api/robots route)
 import { MetadataRoute } from "next";
 
-const SITE_URL = "https://store-caftan-gharnata.pages.dev";
+const SITE_URL = "https://www.caftan-gharnata.com";
 
 export default function robots(): MetadataRoute.Robots {
   return {
