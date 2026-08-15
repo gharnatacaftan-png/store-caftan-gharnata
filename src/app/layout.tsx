@@ -13,11 +13,95 @@ const notoArabic = Noto_Sans_Arabic({
   display: "swap",
 });
 
+const SITE_URL = "https://store-caftan-gharnata.pages.dev";
+const SITE_NAME = "قفطان غرناطة | Caftan Granada";
+const SITE_DESCRIPTION =
+  "قفطان غرناطة — متجر القفطان الجزائري الأصيل. اكتشفي أرقى التصاميم من قفطان، كابيل، بلوزة وهرانية، كراكو وجلابيب زواج وأفراح. توصيل لجميع ولايات الجزائر. Robes traditionnelles algériennes : caftan, robe kabyle, blouza oranaise, karakou — livraison partout en Algérie.";
+
 export const metadata: Metadata = {
-  title: "قفطان غرناطة",
-  description: "قفطان غرناطة",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: SITE_NAME,
+    template: `%s | قفطان غرناطة`,
+  },
+  description: SITE_DESCRIPTION,
+  keywords: [
+    "قفطان جزائري", "caftan algérien", "قفطان غرناطة", "caftan granada",
+    "رداء عروس جزائري", "blouza oranaise", "robe kabyle", "كابيل",
+    "كراكو", "karakou", "جلباب", "قفطان زفاف", "robes traditionnelles algériennes",
+    "caftan mariage algérie", "قفطان مطرز", "تطريز جزائري", "caftan brodé",
+    "متجر قفطان", "boutique caftan algérie", "قفطان بالذهب",
+    "robe de mariée algérienne", "قفطان حفلات", "caftan fête algérie",
+    "عين بنيان", "ain benian", "الجزائر العاصمة", "alger",
+  ],
+  authors: [{ name: "Caftan Granada", url: SITE_URL }],
+  creator: "Caftan Granada",
+  publisher: "Caftan Granada",
+  category: "fashion",
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: "website",
+    locale: "ar_DZ",
+    alternateLocale: ["fr_DZ", "en_US"],
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: `${SITE_URL}/og-image.jpg`,
+        width: 1200,
+        height: 630,
+        alt: "قفطان غرناطة — Caftan Granada",
+        type: "image/jpeg",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [`${SITE_URL}/og-image.jpg`],
+    creator: "@CaftanGranada",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    nocache: false,
+    googleBot: {
+      index: true,
+      follow: true,
+      noimageindex: false,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
   icons: {
-    icon: "/icon.png",
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/apple-touch-icon.png",
+    shortcut: "/favicon.ico",
+  },
+  manifest: "/manifest.json",
+  alternates: {
+    canonical: SITE_URL,
+    languages: {
+      "ar-DZ": `${SITE_URL}?lang=ar`,
+      "fr-DZ": `${SITE_URL}?lang=fr`,
+    },
+  },
+  verification: {
+    // Add your Google Search Console verification code here when ready:
+    // google: "YOUR_GOOGLE_VERIFICATION_CODE",
+  },
+  other: {
+    "geo.region": "DZ",
+    "geo.placename": "Alger, Algérie",
+    "geo.position": "36.5225;2.8722",
+    "ICBM": "36.5225, 2.8722",
   },
 };
 
@@ -59,6 +143,58 @@ export default async function RootLayout({
 
   const dir = initialLang === "ar" ? "rtl" : "ltr";
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ClothingStore",
+    "name": "قفطان غرناطة - Caftan Granada",
+    "alternateName": ["Caftan Granada", "Gharnata Caftan", "قفطان غرناطة"],
+    "url": SITE_URL,
+    "logo": `${SITE_URL}/icon.png`,
+    "image": `${SITE_URL}/og-image.jpg`,
+    "description": SITE_DESCRIPTION,
+    "telephone": "+213560000000",
+    "email": "caftangranada@gmail.com",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "عين بنيان",
+      "addressRegion": "Alger",
+      "addressCountry": "DZ",
+    },
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": "36.5225",
+      "longitude": "2.8722",
+    },
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Saturday", "Sunday"],
+        "opens": "09:00",
+        "closes": "21:00",
+      },
+    ],
+    "priceRange": "$$",
+    "currenciesAccepted": "DZD",
+    "paymentAccepted": "Cash on delivery",
+    "areaServed": {
+      "@type": "Country",
+      "name": "Algeria",
+    },
+    "hasMap": "https://maps.google.com/?q=36.5225,2.8722",
+    "sameAs": [
+      "https://www.instagram.com/caftan.granada",
+      "https://www.facebook.com/caftan.granada",
+    ],
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": {
+        "@type": "EntryPoint",
+        "urlTemplate": `${SITE_URL}/shop?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  };
+
   return (
     <html lang={initialLang} dir={dir} className={`${notoArabic.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
@@ -68,6 +204,11 @@ export default async function RootLayout({
           id="lang-bootstrap"
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: LANG_BOOTSTRAP }}
+        />
+        <Script
+          id="json-ld-organization"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
       <body className="min-h-full flex flex-col bg-background font-noto-arabic w-full">

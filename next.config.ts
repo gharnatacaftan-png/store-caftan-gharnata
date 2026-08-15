@@ -103,12 +103,7 @@ const nextConfig: NextConfig = {
   },
 
   async rewrites() {
-    return [
-      {
-        source: "/robots.txt",
-        destination: "/api/robots",
-      },
-    ];
+    return [];
   },
 };
 
