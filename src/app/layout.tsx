@@ -49,9 +49,16 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [
       {
-        url: `${SITE_URL}/logo.jpg`,
+        url: `${SITE_URL}/og-image.jpg`,
         width: 1200,
         height: 630,
+        alt: "قفطان غرناطة — Caftan Gharnata",
+        type: "image/jpeg",
+      },
+      {
+        url: `${SITE_URL}/logo.jpg`,
+        width: 600,
+        height: 600,
         alt: "قفطان غرناطة — Caftan Gharnata",
         type: "image/jpeg",
       },
@@ -61,7 +68,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: SITE_NAME,
     description: SITE_DESCRIPTION,
-    images: [`${SITE_URL}/logo.jpg`],
+    images: [`${SITE_URL}/og-image.jpg`],
     creator: "@CaftanGharnata",
   },
   robots: {
@@ -203,15 +210,15 @@ export default async function RootLayout({
         <meta property="og:title" content={SITE_NAME} />
         <meta property="og:description" content={SITE_DESCRIPTION} />
         <meta property="og:url" content={SITE_URL} />
-        <meta property="og:image" content={`${SITE_URL}/logo.jpg`} />
-        <meta property="og:image:secure_url" content={`${SITE_URL}/logo.jpg`} />
+        <meta property="og:image" content={`${SITE_URL}/og-image.jpg`} />
+        <meta property="og:image:secure_url" content={`${SITE_URL}/og-image.jpg`} />
         <meta property="og:image:type" content="image/jpeg" />
-        <meta property="og:image:width" content="600" />
-        <meta property="og:image:height" content="600" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={SITE_NAME} />
         <meta name="twitter:description" content={SITE_DESCRIPTION} />
-        <meta name="twitter:image" content={`${SITE_URL}/logo.jpg`} />
+        <meta name="twitter:image" content={`${SITE_URL}/og-image.jpg`} />
         <link rel="preconnect" href="https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev" />
         <Script
