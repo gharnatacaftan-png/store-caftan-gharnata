@@ -10,11 +10,15 @@
   "scope": "/",
   "lang": "ar",
   "dir": "rtl",
-  "categories": ["shopping", "fashion", "lifestyle"],
+  "categories": [
+    "shopping",
+    "fashion",
+    "lifestyle"
+  ],
   "icons": [
     {
       "src": "/icon.png",
-      "sizes": "any",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable any"
     },
