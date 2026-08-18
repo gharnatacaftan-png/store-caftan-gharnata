@@ -58,9 +58,9 @@ export default function Header() {
           <Link href="/" className="flex items-center gap-2 group shrink-0" onClick={() => setMenuOpen(false)}>
             <motion.div
               style={{ width: logoSize, height: logoSize }}
-              className="relative rounded-full overflow-hidden border border-accent/40 group-hover:scale-105 transition-transform duration-300 shrink-0"
+              className="relative overflow-hidden group-hover:scale-105 transition-transform duration-300 shrink-0"
             >
-              <Image src="/logo.jpg" alt="شعار قفطان غرناطة" fill priority sizes="72px" className="object-cover rounded-full" />
+              <Image src="/logo.jpg" alt="شعار قفطان غرناطة" fill priority sizes="72px" className="object-contain" />
             </motion.div>
             <motion.div
               style={{ fontSize: logoText }}
