@@ -74,11 +74,14 @@ export default async function BonPage({
     );
   }
 
-  // Absolute URL for the QR
+  const slipType = sp.type === "commande" || sp.type === "livraison" ? sp.type : null;
+
+  // Absolute URL for the QR — points to the exact current slip type (commande vs livraison)
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
   const origin = host ? `https://${host}` : "";
-  const qrTarget = `${origin}/bon/${order.id}?type=livraison&lang=${lang}`;
+  const qrTypeParam = slipType ? `?type=${slipType}&lang=${lang}` : `?lang=${lang}`;
+  const qrTarget = `${origin}/bon/${order.id}${qrTypeParam}`;
   const qrUrl = await QRCode.toDataURL(qrTarget, {
     width: 220,
     margin: 1,
@@ -102,7 +105,6 @@ export default async function BonPage({
     unit_price: order.product_price,
   }]);
 
-  const slipType = sp.type === "commande" || sp.type === "livraison" ? sp.type : null;
   const dir = lang === "ar" ? "rtl" : "ltr";
 
   // --- CHOOSER PAGE (when opening /bon/36 directly without ?type=...) ---
