@@ -10,6 +10,7 @@ import { socialLinksLine, getActivePhones, getActiveAddresses } from "@/lib/soci
 import { t, type Lang } from "@/lib/i18n";
 import { formatDate, formatTime } from "@/lib/time";
 import PrintButton from "./PrintButton";
+import AutoPrint from "./AutoPrint";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -190,9 +191,7 @@ export default async function BonPage({
           }
         }
       `}</style>
-      <script
-        dangerouslySetInnerHTML={{ __html: "if (typeof window !== 'undefined') { window.onload = function() { window.print(); } }" }}
-      />
+      <AutoPrint />
       <div className="max-w-3xl mx-auto bg-white text-black shadow-2xl shadow-black/20 rounded-lg overflow-hidden print:shadow-none print:rounded-none print:max-w-none">
         {content}
       </div>

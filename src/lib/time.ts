@@ -2,20 +2,33 @@
 //
 // Orders are stored via `CURRENT_TIMESTAMP`, i.e. in UTC (SQLite). The app
 // runtime (Vercel/node/CF Workers) also runs in UTC, so rendering a Date with
-// the default `toLocaleString` options yields UTC and shows up one hour behind
-// real local time in Algeria (Africa/Algiers, UTC+1, no DST since 2018).
+// default options yields UTC and shows up one hour behind real local time in
+// Algeria (Africa/Algiers, UTC+1, no DST since 2018).
 //
-// Fix: always render using the explicit `Africa/Algiers` timeZone so every
-// screen (storefront, printable slip, dashboard, Telegram message) shows the
-// same wall-clock time the customer actually placed the order at.
-//
-// Only the time zone is pinned — the `locale` is still passed through so the
-// digit style / month names follow the viewer's language.
+// Fix: always render using the explicit `Africa/Algiers` timeZone and parse
+// SQLite timestamps as UTC so every screen (storefront, printable slip,
+// dashboard, Telegram message) shows the exact wall-clock time the customer
+// actually placed the order at.
 
 export const STORE_TIMEZONE = "Africa/Algiers";
 
+export function parseUtcDate(iso: string | Date): Date {
+  if (iso instanceof Date) return iso;
+  if (!iso) return new Date();
+  let str = String(iso).trim();
+  // SQLite CURRENT_TIMESTAMP returns "YYYY-MM-DD HH:MM:SS" without Z
+  if (str.includes(" ") && !str.includes("T")) {
+    str = str.replace(" ", "T");
+  }
+  if (!str.endsWith("Z") && !str.includes("+") && !str.includes("-", 11)) {
+    str += "Z";
+  }
+  return new Date(str);
+}
+
 export function formatDate(iso: string | Date, locale: string): string {
-  return new Date(iso).toLocaleDateString(locale, {
+  const d = parseUtcDate(iso);
+  return d.toLocaleDateString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -24,7 +37,8 @@ export function formatDate(iso: string | Date, locale: string): string {
 }
 
 export function formatTime(iso: string | Date, locale: string): string {
-  return new Date(iso).toLocaleTimeString(locale, {
+  const d = parseUtcDate(iso);
+  return d.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: STORE_TIMEZONE,
@@ -32,7 +46,8 @@ export function formatTime(iso: string | Date, locale: string): string {
 }
 
 export function formatDateTime(iso: string | Date, locale: string): string {
-  return new Date(iso).toLocaleString(locale, {
+  const d = parseUtcDate(iso);
+  return d.toLocaleString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
