@@ -6,6 +6,7 @@ import RefreshButton from "@/components/admin/RefreshButton";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 import { changePasswordAction } from "../actions";
+import { parseTelegramChatIds } from "@/lib/telegram-utils";
 
 async function getCsrfToken(): Promise<string> {
   const res = await fetch("/api/csrf");
@@ -368,9 +369,24 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
 
             <div>
               <label className="text-gray-400 text-xs mb-1 block">Chat ID (معرف المحادثة أو القناة)</label>
-              <input value={telegramChatId} onChange={e => setTelegramChatId(e.target.value)} disabled={!telegramEnabled}
-                className={`w-full bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 disabled:opacity-40 ${telegramEnabled ? "" : "pointer-events-none"}`}
-                dir="ltr" placeholder="987654321 أو -100xxxxxxxx" />
+              <textarea value={telegramChatId} onChange={(e) => setTelegramChatId(e.target.value)} disabled={!telegramEnabled}
+                className={`w-full bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 disabled:opacity-40 ${telegramEnabled ? "" : "pointer-events-none"} resize-y-none`}
+                dir="ltr" rows={3}
+                placeholder={lang === "ar" ? "987654321\n-1001234567890\n@channel" : lang === "fr" ? "987654321\n-1001234567890\n@channel" : "987654321\n-1001234567890\n@channel"}
+              />
+              <p className="text-gray-500 text-[11px] mt-1">
+                {lang === "ar"
+                  ? "أرسل الإشعارات إلى عدة حسابات: ضع معرّف كل حساب على سطر، أو افصلهم بـ ; أو ،"
+                  : lang === "fr"
+                  ? "Envoyer aux plusieurs comptes : un Chat ID par ligne, ou séparés par ; ou ,"
+                  : "Send to multiple accounts: one Chat ID per line, or separated by ; or ,"}
+              </p>
+              {parseTelegramChatIds(telegramChatId).length > 0 && (
+                <p className="text-[#D4AF37] text-[11px] mt-1">
+                  {lang === "ar" ? "حساب/حسابات Telegram مُختار: " : lang === "fr" ? "Compte(s) Telegram ciblé(s) : " : "Telegram account(s) targeted: "}
+                  {parseTelegramChatIds(telegramChatId).length}
+                </p>
+              )}
             </div>
 
             {testResult?.ok && (

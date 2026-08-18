@@ -33,16 +33,17 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function normalizeTelegramChatId(chatId: string): string {
-  return chatId.trim().replace(/\s+/g, "");
-}
+import { parseTelegramChatIds, normalizeTelegramChatId } from "./telegram-utils";
+
+export { parseTelegramChatIds, normalizeTelegramChatId };
+
+// Use Node.js native https to bypass fetch restrictions in some environments.
+// Keep the timeout short: Telegram must never slow down checkout.
 
 function isConfiguredTelegramValue(value: string, placeholder: string): boolean {
   return Boolean(value) && value !== placeholder;
 }
 
-// Use Node.js native https to bypass fetch restrictions in some environments.
-// Keep the timeout short: Telegram must never slow down checkout.
 function postToTelegram(
   botToken: string,
   chatId: string,
@@ -135,19 +136,31 @@ function postDocumentToTelegram(
 export async function sendTestTelegramNotification(botToken: string, chatId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const cleanToken = botToken.trim();
-    const cleanChatId = normalizeTelegramChatId(chatId);
-    if (!cleanToken || !cleanChatId) {
-      return { ok: false, error: "Veuillez saisir le Bot Token et le Chat ID Telegram." };
+    const chatIds = parseTelegramChatIds(chatId);
+    if (!cleanToken || chatIds.length === 0) {
+      return { ok: false, error: "Veuillez saisir le Bot Token et au moins un Chat ID Telegram." };
     }
 
     const message = `🔔 رسالة اختبار - قفطان غرناطة
 
 ✅ الاتصال بتليغرام يعمل بشكل صحيح.
 ${formatDateTime(new Date(), "ar-DZ")}`;
-    const result = await postToTelegram(cleanToken, cleanChatId, message, 6_000);
 
-    if (result.ok) return { ok: true };
-    return { ok: false, error: `Telegram: ${result.description || "Unknown error"}` };
+    const results = await Promise.all(
+      chatIds.map((id) =>
+        postToTelegram(cleanToken, id, message, 6_000).catch((e: unknown) => ({
+          ok: false,
+          description: e instanceof Error ? e.message : "message failed",
+        }))
+      )
+    );
+
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length === 0) return { ok: true };
+    return {
+      ok: false,
+      error: `Telegram: ${failed.map((f) => f.description || "Unknown error").join(", ")}`,
+    };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur de connexion Telegram";
     return { ok: false, error: message };
@@ -165,7 +178,7 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
       settings.telegram_bot_token?.trim() ||
       ""
     ).trim();
-    const chatId = normalizeTelegramChatId(
+    const chatIds = parseTelegramChatIds(
       settings.telegram_chat_id?.trim() ||
       process.env.TELEGRAM_CHAT_ID?.trim() ||
       ""
@@ -176,10 +189,15 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
       return false;
     }
 
-    if (!isConfiguredTelegramValue(botToken, "YOUR_BOT_TOKEN") || !isConfiguredTelegramValue(chatId, "YOUR_CHAT_ID")) {
-      console.warn("[telegram] Bot token or chat ID not configured, skipping notification");
+    if (
+      !isConfiguredTelegramValue(botToken, "YOUR_BOT_TOKEN") ||
+      chatIds.length === 0 ||
+      chatIds.every((id) => !isConfiguredTelegramValue(id, "YOUR_CHAT_ID"))
+    ) {
+      console.warn("[telegram] Bot token or chat ID(s) not configured, skipping notification");
       return false;
-}
+    }
+
 
     const lang = data.lang === "fr" ? "الفرنسية" : data.lang === "en" ? "الإنجليزية" : "العربية";
     const shippingTypeText = data.shippingType === "HOME" ? "المنزل 🏠" : "مكتب البريد (Stop Desk) 🏢";
@@ -225,32 +243,43 @@ ${itemsText}
     // Send the message AND the printable order/delivery slip (bon) in parallel.
     // The bon is attached as a document (Telegram fetches its public URL). The
     // document call is best-effort: if it fails/times out we keep the message.
+    // A single order can be delivered to several Telegram accounts at once: we
+    // fan out to every configured chat id.
     const docUrl = `${STORE_URL}/bon/${data.orderId}?type=livraison&lang=${encodeURIComponent(data.lang ?? "ar")}`;
     const docCaption = `📄 بون الطلب #${data.orderId} — قفطان غرناطة`;
 
-    const messageP = postToTelegram(botToken, chatId, message).catch((e: unknown) => ({
-      ok: false,
-      description: e instanceof Error ? e.message : "message failed",
-    }));
-    const docP = postDocumentToTelegram(botToken, chatId, docUrl, docCaption).catch((e: unknown) => ({
-      ok: false,
-      description: e instanceof Error ? e.message : "document failed",
-    }));
+    const results = await Promise.all(
+      chatIds.map(async (chatId) => {
+        const messageP = postToTelegram(botToken, chatId, message).catch((e: unknown) => ({
+          ok: false,
+          description: e instanceof Error ? e.message : "message failed",
+        }));
+        const docP = postDocumentToTelegram(botToken, chatId, docUrl, docCaption).catch((e: unknown) => ({
+          ok: false,
+          description: e instanceof Error ? e.message : "document failed",
+        }));
+        const [msgResult, docResult] = await Promise.all([messageP, docP]);
+        return { chatId, msgResult, docResult };
+      })
+    );
 
-    const [msgResult, docResult] = await Promise.all([messageP, docP]);
-
-    if (!msgResult.ok) {
-      console.error("[telegram] Failed to send notification:", msgResult.description);
-      return false;
+    let delivered = false;
+    for (const { chatId, msgResult, docResult } of results) {
+      if (msgResult.ok) {
+        delivered = true;
+      } else {
+        console.error("[telegram] Failed to send notification to chat", chatId, "-", msgResult.description);
+      }
+      if (!docResult.ok) {
+        // Non-fatal: the order + product details are already in the text message.
+        console.warn("[telegram] Order slip document not sent for order #", data.orderId, "to chat", chatId, "-", docResult.description);
+      }
     }
-    if (!docResult.ok) {
-      // Non-fatal: the order + product details are already in the text message.
-      console.warn("[telegram] Order slip document not sent for order #", data.orderId, "-", docResult.description);
-    }
 
-    return true;
+    return delivered;
   } catch (err) {
     console.error("[telegram] Notification error:", err);
     return false;
   }
 }
+

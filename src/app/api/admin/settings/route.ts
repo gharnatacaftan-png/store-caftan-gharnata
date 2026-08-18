@@ -1,6 +1,7 @@
 ﻿import { NextRequest } from "next/server";
 import { getSiteSettings, updateSiteSettings } from "@/lib/settings";
 import { isAdminRequest, rejectUnsafeAdminRequest } from "@/lib/admin-api";
+import { parseTelegramChatIds } from "@/lib/notifications";
 import { okResponse, errorResponse } from "@/lib/security";
 
 export const runtime = "nodejs";
@@ -8,7 +9,9 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 function cleanTelegramChatId(value: unknown): string {
-  return String(value || "").trim().replace(/\s+/g, "");
+  // Plusieurs chat id séparés par des sauts de ligne, des points-virgules ou
+  // des virgules → normalisés en une liste point-virgule séparée.
+  return parseTelegramChatIds(String(value || "")).join(";");
 }
 
 export async function GET(req: NextRequest) {
