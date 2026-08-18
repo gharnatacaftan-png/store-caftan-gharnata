@@ -53,7 +53,6 @@ export default async function BonPage({
     ? order.lang
     : (sp.lang === "fr" || sp.lang === "en" ? sp.lang : "ar");
   const tx = t(lang);
-  const frT = t("fr");
   const arT = t("ar");
   const locale = lang === "ar" ? "ar-DZ" : lang === "fr" ? "fr-FR" : "en-US";
 
@@ -324,107 +323,71 @@ export default async function BonPage({
     );
   }
 
-  // TYPE 2: BILINGUAL BON DE LIVRAISON (Delivery Slip)
+  // TYPE 2: COMPACT BON DE LIVRAISON (A6 — thermal label printer, single page).
+  // The delivery slip prints on one A6 sticker: tight gutters, tiny fonts, and a
+  // compact 2-col recipient grid. Product name is always Arabic.
   return slipWrapper(
-    <div className={isA6 ? "p-3 sm:p-4" : "p-8 sm:p-10"} dir="ltr">
-      {/* Header */}
-      <div className="flex items-center gap-4 border-b-2 border-[#D4AF37] pb-4 mb-5 slip-no-break">
-        <img src="/logo.jpg" alt="logo" className="w-16 h-16 object-contain" />
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">
-            Caftan Gharnata <span className="text-[#D4AF37]">·</span> <span lang="ar" dir="rtl">قفطان غرناطة</span>
-          </h1>
-          <p className="text-xs text-gray-600 mt-0.5">
-            {frT.admin("contact_label")}{" "}
-            <span className="font-mono">{phonesLine}</span>
-            {socialLine && <>{" · "}{socialLine}</>}
-          </p>
-          {addressesLine && (
-            <p className="text-xs text-gray-600 mt-0.5">{addressesLine}</p>
-          )}
+    <div className="p-2" dir="ltr">
+      {/* Header: store + order meta */}
+      <div className="flex items-center justify-between border-b border-[#D4AF37] pb-1 mb-2 slip-no-break">
+        <div className="flex items-center gap-1.5">
+          <img src="/logo.jpg" alt="logo" className="w-6 h-6 object-contain" />
+          <span className="font-bold text-[9px] text-gray-900">
+            Caftan Gharnata · <span lang="ar" dir="rtl">قفطان غرناطة</span>
+          </span>
         </div>
-        <div className="text-right shrink-0">
-          <p className="font-bold text-[#D4AF37] text-sm">
-            Bon de livraison · <span lang="ar" dir="rtl">قسيمة التوصيل</span>
-          </p>
-          <p className="text-xs text-gray-800 mt-1">N°: <b>#{order.id}</b></p>
-          <p className="text-xs text-gray-800">{formatDate(order.created_at, "fr-FR")}</p>
+        <div className="text-right text-[7.5px] text-gray-800">
+          <div className="font-bold">قسيمة توصيل / Bon de livraison</div>
+          <div>N°: <b>#{order.id}</b></div>
+          <div>{formatDate(order.created_at, "fr-FR")}</div>
         </div>
       </div>
 
-      {/* Client / Destinataire */}
-      <div className="border border-gray-300 rounded-lg p-4 mb-5 slip-no-break">
-        <p className="text-xs font-bold text-[#D4AF37] mb-2 uppercase tracking-wide">
-          Destinataire · <span lang="ar" dir="rtl">المستلم</span>
-        </p>
-        <div className="text-xs text-gray-900 space-y-1.5">
-          <p><span className="text-gray-500">{frT.admin("name")} / {arT.admin("name")}: </span><span className="font-bold text-sm">{order.customer_name}</span></p>
-          <p><span className="text-gray-500">{frT.admin("phone")} / {arT.admin("phone")}: </span><span className="font-mono font-bold" dir="ltr">{order.customer_phone}</span></p>
-          <p><span className="text-gray-500">{frT.admin("commune")} / {arT.admin("commune")}: </span><span className="font-bold">{order.commune}</span></p>
-          <p>
-            <span className="text-gray-500">{frT.admin("wilaya")} / {arT.admin("wilaya")}: </span>
-            <span className="font-bold">{(order.wilaya_name_fr || frT.admin("wilaya_ref").replace("{code}", String(order.wilaya_code))) + " · " + (order.wilaya_name || arT.admin("wilaya_ref").replace("{code}", String(order.wilaya_code)))}</span>
-          </p>
-          <p>
-            <span className="text-gray-500">{frT.admin("delivery_type")} / {arT.admin("delivery_type")}: </span>
-            <span className="font-bold">{home ? frT.admin("home_delivery") : frT.admin("office_pickup")} · {home ? arT.admin("home_delivery") : arT.admin("office_pickup")}</span>
-          </p>
-          <p>
-            <span className="text-gray-500">Paiement / الدفع: </span>
-            <span className="font-bold">{frT.admin("cod_payment")} · {arT.admin("cod_payment")}</span>
-          </p>
-        </div>
+      {/* Recipient (compact 2-col) */}
+      <div className="grid grid-cols-2 gap-x-1 text-[7px] text-gray-800 mb-2 slip-no-break">
+        <div>الاسم: <b>{order.customer_name}</b></div>
+        <div>الهاتف: <b className="font-mono" dir="ltr">{order.customer_phone}</b></div>
+        <div>البلدية: <b>{order.commune}</b></div>
+        <div>الولاية: <b>{wilayaDisplay}</b></div>
+        <div>نوع التوصيل: <b>{home ? "المنزل" : "مكتب البريد"}</b></div>
+        <div>الدفع: <b>نقداً عند الاستلام</b></div>
       </div>
 
-      {/* Products table */}
-      <table className="w-full text-xs mb-5 slip-no-break border border-gray-300 rounded-lg overflow-hidden">
-        <thead>
-          <tr className="bg-gray-900 text-white">
-            <th className="p-2.5 text-left">{frT.admin("product")} / {arT.admin("product")}</th>
-            <th className="p-2.5 text-center">{frT.admin("size")} / {arT.admin("size")}</th>
-            <th className="p-2.5 text-center">{frT.admin("color")} / {arT.admin("color")}</th>
-            <th className="p-2.5 text-center">Qté / الكمية</th>
-            <th className="p-2.5 text-center">{frT.common("price")} / {arT.common("price")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((line, i) => (
-            <tr key={i} className="border-t border-gray-200">
-              <td className="p-2.5">
-                <p className="font-bold">{line.title || frT.admin("product_ref").replace("{id}", String(line.product_id))}</p>
-                <p className="text-[10px] text-gray-500">#ID: {line.product_id}</p>
-              </td>
-              <td className="p-2.5 text-center">{line.selected_size || "—"}</td>
-              <td className="p-2.5 text-center">{line.selected_color || "—"}</td>
-              <td className="p-2.5 text-center">{line.quantity}</td>
-              <td className="p-2.5 text-center font-bold">{fmtPrice("fr-FR", line.unit_price * line.quantity)} DA</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Totals */}
-      <div className="flex justify-end mb-5 slip-no-break">
-        <div className="w-1/2 border border-gray-300 rounded-lg p-3 text-xs text-gray-900">
-          <div className="flex justify-between py-1"><span>{frT.admin("product_price")} / {arT.admin("product_price")}:</span><b>{fmtPrice("fr-FR", order.product_price)} DA</b></div>
-          <div className="flex justify-between py-1"><span>{frT.admin("shipping_cost")} / {arT.admin("shipping_cost")}:</span><b>{fmtPrice("fr-FR", order.shipping_cost)} DA</b></div>
-          <div className="flex justify-between py-1.5 border-t-2 border-[#D4AF37] mt-1 font-bold text-sm">
-            <span>{frT.admin("total_due")} / {arT.admin("total_due")}:</span><span className="text-[#D4AF37]">{fmtPrice("fr-FR", order.total_price)} DA</span>
+      {/* Products (compact) */}
+      <div className="border-t border-b border-gray-300 py-1 mb-2 slip-no-break">
+        {lines.map((line, i) => (
+          <div key={i} className={i > 0 ? "mt-1 border-t border-gray-200 pt-1" : ""}>
+            <div className="font-bold text-[7.5px] text-gray-900">{line.title || `#${line.product_id}`}</div>
+            <div className="text-[6.5px] text-gray-500">
+              #{line.product_id} · المقاس: {line.selected_size || "—"} · اللون: {line.selected_color || "—"}
+            </div>
+            <div className="flex justify-between text-[7.5px] mt-0.5">
+              <span>× {line.quantity}</span>
+              <b>{fmtPrice("ar-DZ", line.unit_price * line.quantity)} د.ج</b>
+            </div>
           </div>
-          <p className="text-[10px] text-gray-500 mt-1 text-center">{frT.admin("cod_payment")} · {arT.admin("cod_payment")}</p>
+        ))}
+      </div>
+
+      {/* Totals + QR */}
+      <div className="flex items-end gap-2 slip-no-break">
+        <div className="flex-1 text-[7px]">
+          <div className="flex justify-between">السعر: <b>{fmtPrice("ar-DZ", order.product_price)} د.ج</b></div>
+          <div className="flex justify-between">التوصيل: <b>{fmtPrice("ar-DZ", order.shipping_cost)} د.ج</b></div>
+          <div className="flex justify-between font-bold border-t border-[#D4AF37] pt-0.5 mt-0.5 text-[#D4AF37]">
+            المجموع: <span>{fmtPrice("ar-DZ", order.total_price)} د.ج</span>
+          </div>
+        </div>
+        <div className="text-center shrink-0">
+          <img src={qrUrl} alt="QR" className="w-13 h-13 mx-auto" />
+          <p className="text-[6px] text-gray-500 max-w-[42px] leading-tight">{arT.admin("scan_qr_hint")}</p>
         </div>
       </div>
 
-      {/* QR + Signatures */}
-      <div className="flex gap-4 items-end mb-5 slip-no-break">
-        <div className="border border-gray-300 rounded-lg p-2.5 text-center shrink-0">
-          <img src={qrUrl} alt="QR Code" className="w-24 h-24 mx-auto" />
-          <p className="text-[9px] text-gray-500 mt-1 max-w-[110px]">{arT.admin("scan_qr_hint")}</p>
-        </div>
-        <div className="flex-1 grid grid-cols-2 gap-4 text-xs text-gray-800">
-          <div className="text-center border-t border-gray-900 pt-1">Signature expéditeur</div>
-          <div className="text-center border-t border-gray-900 pt-1">Signature destinataire</div>
-        </div>
+      {/* Signatures */}
+      <div className="grid grid-cols-2 gap-1 text-[6px] text-center border-t border-gray-400 pt-0.5 mt-1 slip-no-break">
+        <div className="border-t border-gray-400 pt-0.5">مربع الاستلام</div>
+        <div className="border-t border-gray-400 pt-0.5">التوقيع</div>
       </div>
     </div>
   );
