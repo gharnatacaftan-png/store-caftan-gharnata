@@ -14,9 +14,9 @@ import type { Lang } from "@/lib/i18n";
 
 export default function SiteChrome({ children, initialLang }: { children: React.ReactNode; initialLang?: Lang }) {
   const pathname = usePathname();
-  const isAdmin = pathname.startsWith("/gharnata-portal-x92");
+  const isBareRoute = pathname.startsWith("/gharnata-portal-x92") || pathname.startsWith("/bon");
 
-  if (isAdmin) {
+  if (isBareRoute) {
     return <>{children}</>;
   }
 
