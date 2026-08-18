@@ -187,6 +187,8 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
     // Build a detailed, scannable line per product: name + size + color + qty +
     // unit price + line total. La vendeuse n'a pas le mot de passe du dashboard,
     // donc la notification doit contenir TOUTES les infos produit de la commande.
+    // Le nom de produit est toujours en arabe (colonne `title` du produit) et mis
+    // en gras pour rester visible même si le fallback est utilisé.
     const itemsText = data.items
       .map((item, i) => {
         const sizeText = item.selected_size ? ` | المقاس: ${escapeHtml(item.selected_size)}` : "";
@@ -196,7 +198,8 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
         const productLink = item.product_id
           ? `\n   🔗 <a href="${STORE_URL}/product/${item.product_id}">عرض المنتق في المتجر</a>`
           : "";
-        return `• ${i + 1}. ${escapeHtml(item.title || "منتج")}${sizeText}${colorText}\n   الكمية: ${item.quantity} × ${unit} دج = ${lineTotal} دج${productLink}`;
+        const productName = escapeHtml(item.title ?? "") || "اسم المنتج غير محدد";
+        return `• ${i + 1}. المنتج: <b>${productName}</b>${sizeText}${colorText}\n   الكمية: ${item.quantity} × ${unit} دج = ${lineTotal} دج${productLink}`;
       })
       .join("\n");
 
