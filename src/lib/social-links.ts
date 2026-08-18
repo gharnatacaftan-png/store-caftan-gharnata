@@ -48,11 +48,12 @@ export function getActiveSocialLinks(s: SocialSettings | null | undefined): Soci
   // "2135xxxxxxxx") — shown when filled, no dedicated toggle needed.
   const wa = (s.whatsapp || "").trim().replace(/[^\d+]/g, "");
   if (wa) {
+    const waDisplay = `+${wa.replace(/^\+/, "")}`;
     links.push({
       network: "whatsapp",
       label: "WhatsApp",
       href: `https://wa.me/${wa.replace(/^\+/, "")}`,
-      display: wa,
+      display: waDisplay,
     });
   }
 
@@ -63,7 +64,10 @@ export function getActiveSocialLinks(s: SocialSettings | null | undefined): Soci
   }
   const fb = (s.facebook || "").trim();
   if (s.facebook_enabled && fb) {
-    links.push({ network: "facebook", label: "Facebook", href: fb, display: linkDisplay(fb) });
+    const rawDisp = linkDisplay(fb);
+    // If disp is a random alphanumeric hash/ID like 19C4oP55Jx, display Caftan Gharnata
+    const fbDisplay = /^[A-Za-z0-9_-]{8,}$/.test(rawDisp) || /id=\d+/.test(rawDisp) ? "Caftan Gharnata" : rawDisp;
+    links.push({ network: "facebook", label: "Facebook", href: fb, display: fbDisplay });
   }
   const tt = (s.tiktok || "").trim();
   if (s.tiktok_enabled && tt) {

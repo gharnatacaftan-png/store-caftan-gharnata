@@ -3,7 +3,7 @@
 import QRCode from "qrcode";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
-import { Printer, Truck, FileText } from "lucide-react";
+import { Printer, Truck } from "lucide-react";
 import { dbGetOrderById } from "@/lib/orders-db";
 import { getSiteSettings } from "@/lib/settings";
 import { socialLinksLine, getActivePhones, getActiveAddresses } from "@/lib/social-links";
@@ -117,9 +117,6 @@ export default async function BonPage({
             <h1 className="text-xl font-bold text-white mt-2">
               {order.customer_name}
             </h1>
-            <p className="text-xs text-gray-400 mt-1">
-              {order.wilaya_name || order.commune} · {fmtPrice(locale, order.total_price)} {tx.common("currency")}
-            </p>
           </div>
 
           {/* Action Buttons matching dashboard design */}
@@ -156,14 +153,40 @@ export default async function BonPage({
   const slipWrapper = (content: React.ReactNode) => (
     <main className="min-h-screen bg-[#e9e4d8] py-10 print:bg-white print:p-0 print:m-0 print:min-h-0 bon-slip">
       <style>{`
-        @page { size: A4 portrait; margin: 1cm; }
+        @page {
+          size: A4 portrait;
+          margin: 0;
+        }
         @media print {
-          body { background: white !important; padding: 0 !important; margin: 0 !important; color: black !important; }
-          .bon-slip { font-size: 11px; min-height: 0 !important; background: white !important; padding: 0 !important; }
-          .bon-slip > div { box-shadow: none !important; border-radius: 0 !important; max-width: none !important; }
-          .bon-slip table td, .bon-slip table th { padding: 4px 6px !important; }
-          .slip-no-break { page-break-inside: avoid !important; break-inside: avoid !important; }
-          .no-print { display: none !important; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .bon-slip {
+            font-size: 11px;
+            min-height: 0 !important;
+            background: white !important;
+            padding: 1.2cm !important;
+            margin: 0 !important;
+          }
+          .bon-slip > div {
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            max-width: none !important;
+          }
+          .bon-slip table td, .bon-slip table th {
+            padding: 4px 6px !important;
+          }
+          .slip-no-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
       <script
