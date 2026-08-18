@@ -10,6 +10,7 @@ interface OrderNotificationData {
   commune: string;
   shippingType: string;
   items: Array<{
+    product_id?: number;
     title: string | null;
     selected_size?: string | null;
     selected_color?: string | null;
@@ -22,6 +23,7 @@ interface OrderNotificationData {
 }
 
 const TELEGRAM_TIMEOUT_MS = 4_000;
+const STORE_URL = "https://www.caftan-gharnata.com";
 
 function escapeHtml(text: string): string {
   return text
@@ -57,6 +59,53 @@ function postToTelegram(
     const options = {
       hostname: "api.telegram.org",
       path: `/bot${botToken}/sendMessage`,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": payload.length,
+      },
+      timeout: timeoutMs,
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve({ ok: false, description: data }); }
+      });
+    });
+
+    req.on("timeout", () => { req.destroy(); reject(new Error(`Telegram request timed out (${timeoutMs}ms)`)); });
+    req.on("error", (e) => reject(e));
+    req.write(payload);
+    req.end();
+  });
+}
+
+// Send a document by public URL (Telegram fetches it itself). Best-effort: a
+// failure here must never break the order — the text message is the primary
+// notification. Used to attach the printable order/delivery slip (bon) per order.
+function postDocumentToTelegram(
+  botToken: string,
+  chatId: string,
+  documentUrl: string,
+  caption: string,
+  timeoutMs = TELEGRAM_TIMEOUT_MS
+): Promise<{ ok: boolean; description?: string }> {
+  return new Promise((resolve, reject) => {
+    const payload = Buffer.from(JSON.stringify({
+      chat_id: normalizeTelegramChatId(chatId),
+      document: documentUrl,
+      caption,
+      parse_mode: "HTML",
+      disable_content_type_detection: true,
+    }), "utf8");
+
+    const options = {
+      hostname: "api.telegram.org",
+      path: `/bot${botToken}/sendDocument`,
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
@@ -131,35 +180,65 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
     const lang = data.lang === "fr" ? "الفرنسية" : data.lang === "en" ? "الإنجليزية" : "العربية";
     const shippingTypeText = data.shippingType === "HOME" ? "المنزل 🏠" : "مكتب البريد (Stop Desk) 🏢";
 
-    let itemsText = "";
-    for (const item of data.items) {
-      const sizeText = item.selected_size ? ` - المقاس: ${escapeHtml(item.selected_size)}` : "";
-      const colorText = item.selected_color ? ` - اللون: ${escapeHtml(item.selected_color)}` : "";
-      const qtyText = item.quantity > 1 ? ` ×${item.quantity}` : "";
-      itemsText += `• ${escapeHtml(item.title || "منتج")}${sizeText}${colorText}${qtyText}: ${item.unit_price.toLocaleString("fr-FR")} دج\n`;
-    }
+    // Build a detailed, scannable line per product: name + size + color + qty +
+    // unit price + line total. La vendeuse n'a pas le mot de passe du dashboard,
+    // donc la notification doit contenir TOUTES les infos produit de la commande.
+    const itemsText = data.items
+      .map((item, i) => {
+        const sizeText = item.selected_size ? ` | المقاس: ${escapeHtml(item.selected_size)}` : "";
+        const colorText = item.selected_color ? ` | اللون: ${escapeHtml(item.selected_color)}` : "";
+        const unit = item.unit_price.toLocaleString("fr-FR");
+        const lineTotal = (item.unit_price * item.quantity).toLocaleString("fr-FR");
+        const productLink = item.product_id
+          ? `\n   🔗 <a href="${STORE_URL}/product/${item.product_id}">عرض المنتق في المتجر</a>`
+          : "";
+        return `• ${i + 1}. ${escapeHtml(item.title || "منتج")}${sizeText}${colorText}\n   الكمية: ${item.quantity} × ${unit} دج = ${lineTotal} دج${productLink}`;
+      })
+      .join("\n");
 
-    const message = `📦 طلب جديد رقم #${data.orderId}
+    const message = `🛒 طلب جديد #${data.orderId} — قفطان غرناطة
 
-👤 الاسم: ${escapeHtml(data.customerName)}
+👤 العميل: ${escapeHtml(data.customerName)}
 📞 الهاتف: ${escapeHtml(data.customerPhone)}
 📍 الولاية: ${escapeHtml(data.wilayaName)}
 🏠 البلدية: ${escapeHtml(data.commune)}
-🚚 التوصيل: ${shippingTypeText}
+🚚 نوع التوصيل: ${shippingTypeText}
+🌐 اللغة: ${lang}
 
 🛍️ المنتجات:
 ${itemsText}
-🚚 تكلفة التوصيل: ${data.shippingCost.toLocaleString("fr-FR")} دج
-💰 المجموع: ${data.totalPrice.toLocaleString("fr-FR")} دج
 
-اللغة: ${lang}
-${new Date().toLocaleString("ar-DZ")}`;
+🧾 <a href="${STORE_URL}/bon/${data.orderId}">بون الشراء / Bon de livraison — فتح / تحميل</a>
 
-    const result = await postToTelegram(botToken, chatId, message);
+💳 تكلفة التوصيل: ${data.shippingCost.toLocaleString("fr-FR")} دج
+💰 المجموع الكلي: ${data.totalPrice.toLocaleString("fr-FR")} دج
 
-    if (!result.ok) {
-      console.error("[telegram] Failed to send notification:", result.description);
+🕒 ${new Date().toLocaleString("ar-DZ")}`;
+
+    // Send the message AND the printable order/delivery slip (bon) in parallel.
+    // The bon is attached as a document (Telegram fetches its public URL). The
+    // document call is best-effort: if it fails/times out we keep the message.
+    const docUrl = `${STORE_URL}/bon/${data.orderId}`;
+    const docCaption = `📄 بون الطلب #${data.orderId} — قفطان غرناطة`;
+
+    const messageP = postToTelegram(botToken, chatId, message).catch((e: unknown) => ({
+      ok: false,
+      description: e instanceof Error ? e.message : "message failed",
+    }));
+    const docP = postDocumentToTelegram(botToken, chatId, docUrl, docCaption).catch((e: unknown) => ({
+      ok: false,
+      description: e instanceof Error ? e.message : "document failed",
+    }));
+
+    const [msgResult, docResult] = await Promise.all([messageP, docP]);
+
+    if (!msgResult.ok) {
+      console.error("[telegram] Failed to send notification:", msgResult.description);
       return false;
+    }
+    if (!docResult.ok) {
+      // Non-fatal: the order + product details are already in the text message.
+      console.warn("[telegram] Order slip document not sent for order #", data.orderId, "-", docResult.description);
     }
 
     return true;

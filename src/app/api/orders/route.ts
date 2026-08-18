@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
         commune,
         shippingType,
         items: items.map((it) => ({
+          product_id: it.product_id,
           title: it.title,
           selected_size: it.selected_size,
           selected_color: it.selected_color,
