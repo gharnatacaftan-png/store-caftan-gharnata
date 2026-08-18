@@ -154,12 +154,21 @@ export default async function BonPage({
   }
 
   // --- PRINTABLE SLIPS (when ?type=commande or ?type=livraison) ---
+  // The "bon de livraison" is printed on a thermal label/sticker printer (A6),
+  // so it uses a smaller @page + tighter gutters than the A4 "bon de commande".
+  const isA6 = slipType === "livraison";
+  const pageSize = isA6 ? "A6" : "A4 portrait";
+  const pageMargin = isA6 ? "0.5cm" : "0";
+  const slipPad = isA6 ? "0.5cm" : "1.2cm";
+  const bodyFontSize = isA6 ? "10px" : "11px";
+  const cellPad = isA6 ? "3px 4px" : "4px 6px";
+
   const slipWrapper = (content: React.ReactNode) => (
     <main className="min-h-screen bg-[#e9e4d8] py-10 print:bg-white print:p-0 print:m-0 print:min-h-0 bon-slip">
       <style>{`
         @page {
-          size: A4 portrait;
-          margin: 0;
+          size: ${pageSize};
+          margin: ${pageMargin};
         }
         @media print {
           html, body {
@@ -170,10 +179,10 @@ export default async function BonPage({
             print-color-adjust: exact !important;
           }
           .bon-slip {
-            font-size: 11px;
+            font-size: ${bodyFontSize};
             min-height: 0 !important;
             background: white !important;
-            padding: 1.2cm !important;
+            padding: ${slipPad} !important;
             margin: 0 !important;
           }
           .bon-slip > div {
@@ -182,7 +191,7 @@ export default async function BonPage({
             max-width: none !important;
           }
           .bon-slip table td, .bon-slip table th {
-            padding: 4px 6px !important;
+            padding: ${cellPad} !important;
           }
           .slip-no-break {
             page-break-inside: avoid !important;
@@ -204,7 +213,7 @@ export default async function BonPage({
   // TYPE 1: BON DE COMMANDE (Order Form)
   if (slipType === "commande") {
     return slipWrapper(
-      <div className="p-8 sm:p-10" dir={dir}>
+      <div className={isA6 ? "p-3 sm:p-4" : "p-8 sm:p-10"} dir={dir}>
         {/* Store header */}
         <div className="flex items-center gap-4 border-b-2 border-[#D4AF37] pb-4 mb-5 slip-no-break">
           <img src="/logo.jpg" alt="logo" className="w-16 h-16 object-contain" />
@@ -317,7 +326,7 @@ export default async function BonPage({
 
   // TYPE 2: BILINGUAL BON DE LIVRAISON (Delivery Slip)
   return slipWrapper(
-    <div className="p-8 sm:p-10" dir="ltr">
+    <div className={isA6 ? "p-3 sm:p-4" : "p-8 sm:p-10"} dir="ltr">
       {/* Header */}
       <div className="flex items-center gap-4 border-b-2 border-[#D4AF37] pb-4 mb-5 slip-no-break">
         <img src="/logo.jpg" alt="logo" className="w-16 h-16 object-contain" />
