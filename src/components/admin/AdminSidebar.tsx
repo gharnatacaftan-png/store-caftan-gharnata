@@ -62,8 +62,8 @@ function NavContent({
       {/* Logo */}
       <div className="px-5 py-6 border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div className="relative w-16 h-16 shrink-0 overflow-hidden">
-            <Image src="/logo.jpg" alt="شعار قفطان غرناطة" fill sizes="64px" className="object-contain pointer-events-none" />
+          <div className="relative w-14 h-14 shrink-0 rounded-full overflow-hidden border border-[#D4AF37]/40 shadow-sm">
+            <Image src="/logo.jpg" alt="شعار قفطان غرناطة" fill sizes="56px" className="object-cover rounded-full pointer-events-none" />
           </div>
           <div>
             <p className="text-white font-bold text-sm">{tx.admin("brand")}</p>

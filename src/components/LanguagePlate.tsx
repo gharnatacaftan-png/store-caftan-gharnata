@@ -77,8 +77,8 @@ export default function LanguagePlate() {
               <div className="h-2 bg-gradient-to-r from-[#D4AF37] via-[#F5D061] to-[#C5A059]" />
 
               <div className="p-6 sm:p-8 text-center">
-                <div className="relative w-20 h-20 mx-auto mb-4">
-                  <Image src="/logo.jpg" alt="شعار قفطان غرناطة" fill sizes="80px" className="object-contain" />
+                <div className="relative w-20 h-20 mx-auto mb-4 rounded-full overflow-hidden border-2 border-[#D4AF37]/50 shadow-md">
+                  <Image src="/logo.jpg" alt="شعار قفطان غرناطة" fill sizes="80px" className="object-cover rounded-full" />
                 </div>
 
                 <h1 className="text-2xl font-bold text-primary mb-1">
