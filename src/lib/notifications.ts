@@ -1,6 +1,7 @@
 ﻿import "server-only";
 import https from "https";
 import { getSiteSettings } from "./settings";
+import { formatDateTime } from "./time";
 
 interface OrderNotificationData {
   orderId: number;
@@ -139,7 +140,10 @@ export async function sendTestTelegramNotification(botToken: string, chatId: str
       return { ok: false, error: "Veuillez saisir le Bot Token et le Chat ID Telegram." };
     }
 
-    const message = `🔔 رسالة اختبار - قفطان غرناطة\n\n✅ الاتصال بتليغرام يعمل بشكل صحيح.\n${new Date().toLocaleString("ar-DZ")}`;
+    const message = `🔔 رسالة اختبار - قفطان غرناطة
+
+✅ الاتصال بتليغرام يعمل بشكل صحيح.
+${formatDateTime(new Date(), "ar-DZ")}`;
     const result = await postToTelegram(cleanToken, cleanChatId, message, 6_000);
 
     if (result.ok) return { ok: true };
@@ -208,17 +212,17 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
 🛍️ المنتجات:
 ${itemsText}
 
-🧾 <a href="${STORE_URL}/bon/${data.orderId}">بون الشراء / Bon de livraison — فتح / تحميل</a>
+🧾 <a href="${STORE_URL}/bon/${data.orderId}?lang=${encodeURIComponent(data.lang ?? "ar")}">بون الشراء / Bon de livraison — فتح / تحميل</a>
 
 💳 تكلفة التوصيل: ${data.shippingCost.toLocaleString("fr-FR")} دج
 💰 المجموع الكلي: ${data.totalPrice.toLocaleString("fr-FR")} دج
 
-🕒 ${new Date().toLocaleString("ar-DZ")}`;
+🕒 ${formatDateTime(new Date(), "ar-DZ")}`;
 
     // Send the message AND the printable order/delivery slip (bon) in parallel.
     // The bon is attached as a document (Telegram fetches its public URL). The
     // document call is best-effort: if it fails/times out we keep the message.
-    const docUrl = `${STORE_URL}/bon/${data.orderId}`;
+    const docUrl = `${STORE_URL}/bon/${data.orderId}?type=livraison&lang=${encodeURIComponent(data.lang ?? "ar")}`;
     const docCaption = `📄 بون الطلب #${data.orderId} — قفطان غرناطة`;
 
     const messageP = postToTelegram(botToken, chatId, message).catch((e: unknown) => ({

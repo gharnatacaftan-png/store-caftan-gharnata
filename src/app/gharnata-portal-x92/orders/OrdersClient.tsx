@@ -8,6 +8,7 @@ import { useLang } from "@/hooks/useLang";
 import { t, type Lang } from "@/lib/i18n";
 import { socialLinksLine, getActivePhones, getActiveAddresses } from "@/lib/social-links";
 import { csrfHeaders } from "@/lib/client-csrf";
+import { formatDate, formatTime } from "@/lib/time";
 
 export type OrderStatus = "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
 
@@ -260,7 +261,7 @@ export default function OrdersClient({ initialOrders }: { initialOrders: OrderIt
       o.shipping_type === "HOME" ? tx.admin("home_delivery") : tx.admin("office_pickup"),
       o.product_price, o.shipping_cost, o.total_price,
       STATUS_LABELS[o.status]?.label || o.status,
-      new Date(o.created_at).toLocaleDateString(locale),
+      formatDate(o.created_at, locale),
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -269,10 +270,10 @@ export default function OrdersClient({ initialOrders }: { initialOrders: OrderIt
   }
 
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+    return formatDate(iso, locale);
   }
   function fmtTime(iso: string) {
-    return new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    return formatTime(iso, locale);
   }
   function fmtPrice(n: number) {
     return n.toLocaleString(locale);
@@ -298,10 +299,10 @@ export default function OrdersClient({ initialOrders }: { initialOrders: OrderIt
   const arT = t("ar");
 
   function slipDate(iso: string) {
-    return new Date(iso).toLocaleDateString(slipLocale, { day: "2-digit", month: "2-digit", year: "numeric" });
+    return formatDate(iso, slipLocale);
   }
   function slipTime(iso: string) {
-    return new Date(iso).toLocaleTimeString(slipLocale, { hour: "2-digit", minute: "2-digit" });
+    return formatTime(iso, slipLocale);
   }
   function slipPrice(n: number) {
     return n.toLocaleString(slipLocale);
@@ -807,7 +808,7 @@ export default function OrdersClient({ initialOrders }: { initialOrders: OrderIt
                   Bon de livraison · <span lang="ar" dir="rtl">قسيمة التوصيل</span>
                 </div>
                 <div style={{ marginTop: 2 }}>N°: <b>#{selectedOrder.id}</b></div>
-                <div>{new Date(selectedOrder.created_at).toLocaleDateString("fr-FR")}</div>
+                <div>{formatDate(selectedOrder.created_at, "fr-FR")}</div>
               </div>
             </div>
 

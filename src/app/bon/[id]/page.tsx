@@ -8,6 +8,7 @@ import { dbGetOrderById } from "@/lib/orders-db";
 import { getSiteSettings } from "@/lib/settings";
 import { socialLinksLine, getActivePhones, getActiveAddresses } from "@/lib/social-links";
 import { t, type Lang } from "@/lib/i18n";
+import { formatDate, formatTime } from "@/lib/time";
 import PrintButton from "./PrintButton";
 
 export const runtime = "nodejs";
@@ -20,10 +21,10 @@ export const metadata: Metadata = {
 };
 
 function fmtDate(locale: string, iso: string) {
-  return new Date(iso).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+  return formatDate(iso, locale);
 }
 function fmtTime(locale: string, iso: string) {
-  return new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  return formatTime(iso, locale);
 }
 function fmtPrice(locale: string, n: number) {
   return n.toLocaleString(locale);
@@ -337,7 +338,7 @@ export default async function BonPage({
             Bon de livraison · <span lang="ar" dir="rtl">قسيمة التوصيل</span>
           </p>
           <p className="text-xs text-gray-800 mt-1">N°: <b>#{order.id}</b></p>
-          <p className="text-xs text-gray-800">{new Date(order.created_at).toLocaleDateString("fr-FR")}</p>
+          <p className="text-xs text-gray-800">{formatDate(order.created_at, "fr-FR")}</p>
         </div>
       </div>
 
