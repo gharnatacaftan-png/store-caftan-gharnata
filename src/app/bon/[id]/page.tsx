@@ -68,7 +68,20 @@ export default async function BonPage({
   const addressesLine = getActiveAddresses(settings).join(" · ");
 
   const slip = (children: React.ReactNode) => (
-    <main className="min-h-screen bg-[#e9e4d8] py-10 print:bg-white print:p-0 print:m-0">
+    <main className="min-h-screen bg-[#e9e4d8] py-10 print:bg-white print:p-0 print:m-0 print:min-h-0 bon-slip">
+      {/* Compact print layout so the slip always fits on a single A4 page — the
+          generous `p-8 sm:p-10` + full-size body text was pushing it to 2 pages.
+          Screen rendering is untouched (print-only). */}
+      <style>{`
+@page { margin: 1.5cm; }
+@media print {
+  .bon-slip { font-size: 11px; min-height: 0 !important; }
+  .bon-slip > div > div { padding: 4px !important; }
+  .bon-slip table td, .bon-slip table th { padding: 2px 3px !important; }
+  .bon-slip .slip-no-break { page-break-inside: avoid !important; break-inside: avoid !important; }
+  .bon-slip img { max-width: 100%; height: auto; }
+}
+`}</style>
       <div className="max-w-3xl mx-auto bg-white text-black shadow-2xl shadow-black/20 rounded-lg overflow-hidden print:shadow-none print:rounded-none print:max-w-none">
         {children}
       </div>
