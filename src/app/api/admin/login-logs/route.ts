@@ -2,14 +2,16 @@
 import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { requireAdminSession, okResponse, errorResponse } from "@/lib/security";
-import { d1Query } from "@/lib/db";
+import { d1Query, d1Execute } from "@/lib/db";
 import { ensureLoginLogsTable, recordLoginLog } from "@/lib/login-logs";
+import { parseUserAgent, lookupIpLocation } from "@/lib/device-parser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 interface LoginLogRow {
+  id?: number;
   username: string;
   ip: string;
   user_agent: string;
@@ -20,47 +22,6 @@ interface LoginLogRow {
 }
 
 const DEFAULT_LIMIT = 100;
-
-export function deviceFromUA(ua: string): string {
-  if (!ua) return "Unknown device";
-  const u = ua;
-
-  if (/iPad/i.test(u)) return "Apple iPad";
-
-  const iphoneMatch = u.match(/iPhone(?:[ _-]OS[ _]?([\d_]+))?/i);
-  if (/iPhone|iPod/i.test(u)) {
-    const os = iphoneMatch?.[1]?.replace(/_/g, ".");
-    return "Apple iPhone" + (os ? ` ${os}` : "");
-  }
-
-  const samsungMatch = u.match(/(SM-[A-Za-z0-9]+)/i);
-  if (/Samsung/i.test(u)) return "Samsung" + (samsungMatch?.[1] ? ` ${samsungMatch[1]}` : "");
-
-  if (/OPPO/i.test(u)) {
-    const m = u.match(/OPPO[ _-]?([A-Za-z0-9 _-]+)/i);
-    const model = m?.[1]?.trim().replace(/\s+/g, " ");
-    return "Oppo" + (model ? ` ${model}` : "");
-  }
-  if (/Xiaomi|Mi[ _][A-Z0-9]/i.test(u)) {
-    const m = u.match(/Xiaomi[ _-]?([A-Za-z0-9 _-]+)/i) || u.match(/Mi[ _-]([A-Za-z0-9 _-]+)/i);
-    return "Xiaomi" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
-  }
-  if (/Realme/i.test(u)) {
-    const m = u.match(/Realme[ _-]?([A-Za-z0-9 _-]+)/i);
-    return "Realme" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
-  }
-  if (/Vivo/i.test(u)) {
-    const m = u.match(/Vivo[ _-]?([A-Za-z0-9 _-]+)/i);
-    return "Vivo" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
-  }
-  if (/OnePlus/i.test(u)) {
-    const m = u.match(/OnePlus[ _-]?([A-Za-z0-9 _-]+)/i);
-    return "OnePlus" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
-  }
-
-  if (/Tablet|Android.+Mobile|Android.+touch/i.test(u) && !/Mobile/i.test(u)) return "Tablet";
-  return /Mobile|Android|iP(hone|od)/i.test(u) ? "Mobile" : "Desktop";
-}
 
 export async function GET(req: NextRequest) {
   const session = await requireAdminSession();
@@ -74,7 +35,7 @@ export async function GET(req: NextRequest) {
     await ensureLoginLogsTable();
 
     let rows = await d1Query<LoginLogRow>(
-      `SELECT username, ip, user_agent, country, city, success, created_at
+      `SELECT id, username, ip, user_agent, country, city, success, created_at
        FROM admin_login_logs
        ORDER BY id DESC
        LIMIT ?`,
@@ -101,7 +62,7 @@ export async function GET(req: NextRequest) {
       });
 
       rows = await d1Query<LoginLogRow>(
-        `SELECT username, ip, user_agent, country, city, success, created_at
+        `SELECT id, username, ip, user_agent, country, city, success, created_at
          FROM admin_login_logs
          ORDER BY id DESC
          LIMIT ?`,
@@ -109,12 +70,44 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const logs = rows.map((r) => ({
-      ...r,
-      device: deviceFromUA(r.user_agent || ""),
-    }));
+    // Auto-backfill location for rows with missing location data
+    const locationCache = new Map<string, { country: string | null; city: string | null }>();
+    const enrichedRows = await Promise.all(
+      rows.map(async (r) => {
+        let country = r.country;
+        let city = r.city;
 
-    return okResponse({ ok: true, logs });
+        if ((!country || !city) && r.ip && r.ip !== "unknown" && r.ip !== "127.0.0.1") {
+          let loc = locationCache.get(r.ip);
+          if (!loc) {
+            loc = await lookupIpLocation(r.ip);
+            locationCache.set(r.ip, loc);
+            // Fire-and-forget update to D1 so next reload is instant
+            void d1Execute(
+              `UPDATE admin_login_logs SET country = ?, city = ? WHERE ip = ? AND (country IS NULL OR city IS NULL)`,
+              [loc.country, loc.city, r.ip]
+            ).catch(() => {});
+          }
+          country = country || loc.country;
+          city = city || loc.city;
+        }
+
+        const parsed = parseUserAgent(r.user_agent || "");
+
+        return {
+          ...r,
+          country,
+          city,
+          browser: parsed.browser,
+          os: parsed.os,
+          deviceType: parsed.deviceType,
+          deviceModel: parsed.deviceModel,
+          device: parsed.fullLabel,
+        };
+      })
+    );
+
+    return okResponse({ ok: true, logs: enrichedRows });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[admin/login-logs GET]", err);

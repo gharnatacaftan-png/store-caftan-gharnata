@@ -1,6 +1,7 @@
 import "server-only";
 import { d1Execute } from "@/lib/db";
 import { dbLogger } from "@/lib/logger";
+import { lookupIpLocation } from "@/lib/device-parser";
 
 export interface LoginLogEntry {
   username?: string;
@@ -33,8 +34,22 @@ export async function ensureLoginLogsTable(): Promise<void> {
 }
 
 // Best-effort audit write: a failure here must NEVER break the login/logout
-// flow or the admin UI. Auto-creates table if missing.
+// flow or the admin UI. Auto-creates table if missing and resolves IP location.
 export async function recordLoginLog(entry: LoginLogEntry): Promise<void> {
+  let country = entry.country || null;
+  let city = entry.city || null;
+
+  // Auto-resolve location if not passed via Cloudflare headers
+  if (!country && !city && entry.ip && entry.ip !== "unknown") {
+    try {
+      const loc = await lookupIpLocation(entry.ip);
+      country = loc.country;
+      city = loc.city;
+    } catch {
+      // Ignore lookup failure
+    }
+  }
+
   try {
     await d1Execute(
       `INSERT INTO admin_login_logs (username, ip, user_agent, success, country, city)
@@ -44,8 +59,8 @@ export async function recordLoginLog(entry: LoginLogEntry): Promise<void> {
         entry.ip,
         entry.userAgent ?? "",
         entry.success ? 1 : 0,
-        entry.country || null,
-        entry.city || null,
+        country,
+        city,
       ]
     );
   } catch {
@@ -60,8 +75,8 @@ export async function recordLoginLog(entry: LoginLogEntry): Promise<void> {
           entry.ip,
           entry.userAgent ?? "",
           entry.success ? 1 : 0,
-          entry.country || null,
-          entry.city || null,
+          country,
+          city,
         ]
       );
     } catch (retryErr) {

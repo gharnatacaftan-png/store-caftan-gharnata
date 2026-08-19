@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import RefreshButton from "@/components/admin/RefreshButton";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
-import { LogIn, LogOut } from "lucide-react";
+import { LogIn, LogOut, Monitor, Smartphone, Tablet, MapPin, ShieldCheck, ShieldAlert } from "lucide-react";
 import { formatDateTime } from "@/lib/time";
 
 interface LoginLog {
@@ -13,6 +13,10 @@ interface LoginLog {
   user_agent: string;
   country: string | null;
   city: string | null;
+  browser?: string;
+  os?: string;
+  deviceType?: "Desktop" | "Mobile" | "Tablet";
+  deviceModel?: string;
   device: string;
   success: number;
   created_at: string;
@@ -25,12 +29,10 @@ interface ApiResponse {
   error?: string;
 }
 
-function statusIcon(success: number) {
-  return success ? (
-    <LogIn className="w-4 h-4 text-emerald-400" />
-  ) : (
-    <LogOut className="w-4 h-4 text-red-400" />
-  );
+function DeviceIcon({ type }: { type?: "Desktop" | "Mobile" | "Tablet" }) {
+  if (type === "Mobile") return <Smartphone className="w-4 h-4 text-amber-400 shrink-0" />;
+  if (type === "Tablet") return <Tablet className="w-4 h-4 text-purple-400 shrink-0" />;
+  return <Monitor className="w-4 h-4 text-sky-400 shrink-0" />;
 }
 
 export default function LoginLogsClient() {
@@ -45,8 +47,9 @@ export default function LoginLogsClient() {
   function formatLocation(country: string | null | undefined, city: string | null | undefined): string {
     const c = country && country !== "--" ? country : null;
     const ci = city && city !== "--" ? city : null;
-    if (!c && !ci) return "—";
-    return c && ci ? `${ci}, ${c}` : (c || ci || "—");
+    if (!c && !ci) return "Inconnu (VPN / Local)";
+    if (c && ci) return `${ci}, ${c}`;
+    return c || ci || "Inconnu";
   }
 
   async function fetchLogs() {
@@ -82,38 +85,26 @@ export default function LoginLogsClient() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">{tx.admin("login_logs_title")}</h1>
-          <p className="text-gray-500 text-xs sm:text-sm mt-1">{tx.admin("login_logs_subtitle")}</p>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">{tx.admin("login_logs_title")}</h1>
+            <span className="bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30 text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" /> Security Audit
+            </span>
+          </div>
+          <p className="text-gray-400 text-xs sm:text-sm mt-1">{tx.admin("login_logs_subtitle")}</p>
         </div>
         <RefreshButton onRefresh={fetchLogs} label={tx.admin("login_logs_refresh")} />
       </div>
 
-      {/* Migration banner (mirrors analytics pattern) */}
       {tableMissing && (
         <div className="mb-6 border border-[#D4AF37]/30 bg-[#D4AF37]/10 rounded-2xl p-5">
           <p className="text-[#D4AF37] font-semibold text-sm mb-3">⚠️ {tx.admin("login_logs_table_missing")}</p>
-          <pre className="bg-black/40 text-[#D4AF37] text-xs rounded-xl p-4 overflow-x-auto leading-relaxed">{`CREATE TABLE IF NOT EXISTS admin_login_logs (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  username  TEXT    NOT NULL DEFAULT 'admin',
-  ip        TEXT,
-  user_agent TEXT,
-  success    INTEGER NOT NULL DEFAULT 0,
-  country    TEXT,
-  city       TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_admin_login_logs_created ON admin_login_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(success);
-
--- or run: wrangler d1 migrations apply caftan-gharnata-db --remote
--- (also add country/city via migration 0004 if the table already exists)`}</pre>
         </div>
       )}
 
       {serverError && !tableMissing && (
         <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">
           ⚠️ {serverError}
-          <p className="text-xs mt-1 opacity-80">{tx.admin("login_logs_apply_hint")}</p>
         </div>
       )}
 
@@ -123,11 +114,11 @@ CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(succ
         </div>
       )}
 
-      <div className="bg-[#111118] border border-white/5 rounded-2xl overflow-hidden">
+      <div className="bg-[#111118] border border-white/10 rounded-2xl overflow-hidden shadow-2xl shadow-black/40">
         {loading ? (
-          <div className="p-8 space-y-3">
+          <div className="p-8 space-y-4">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-5 bg-white/5 rounded animate-pulse" style={{ animationDelay: `${i * 40}ms` }} />
+              <div key={i} className="h-10 bg-white/5 rounded-xl animate-pulse" style={{ animationDelay: `${i * 40}ms` }} />
             ))}
           </div>
         ) : data && data.logs.length > 0 ? (
@@ -135,43 +126,89 @@ CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(succ
             <table className="w-full text-xs sm:text-sm text-left">
               <thead>
                 <tr className="bg-white/5 border-b border-white/10">
-                  <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">#</th>
-                  <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_user")}</th>
-                  <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_status")}</th>
-                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden md:table-cell">{tx.admin("login_logs_ip")}</th>
-                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden lg:table-cell">{tx.admin("login_logs_location")}</th>
-                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden lg:table-cell">{tx.admin("login_logs_device")}</th>
-                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_when")}</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">#</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">{tx.admin("login_logs_user")}</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">{tx.admin("login_logs_status")}</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">{tx.admin("login_logs_ip")}</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">{tx.admin("login_logs_location")}</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">{tx.admin("login_logs_device")}</th>
+                  <th className="text-gray-400 font-semibold px-4 py-3.5">{tx.admin("login_logs_when")}</th>
                 </tr>
               </thead>
-              <tbody>
-                {data.logs.map((log, i) => (
-                  <tr key={log.created_at + i} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                    <td className="text-gray-500 px-3 sm:px-4 py-2 font-mono">{i + 1}</td>
-                    <td className="text-white font-medium px-3 sm:px-4 py-2">{log.username || "admin"}</td>
-                    <td className="px-3 sm:px-4 py-2">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium rounded px-2 py-0.5 ${
-                        log.success ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
-                      }`}>
-                        {statusIcon(log.success)}
-                        {log.success ? tx.admin("login_logs_success") : tx.admin("login_logs_failure")}
-                      </span>
-                    </td>
-                    <td className="text-gray-300 font-mono px-3 sm:px-4 py-2 hidden md:table-cell break-all max-w-[140px]">{log.ip || "—"}</td>
-                    <td className="text-gray-400 px-3 sm:px-4 py-2 hidden lg:table-cell">{formatLocation(log.country, log.city)}</td>
-                    <td className="text-gray-400 px-3 sm:px-4 py-2 hidden lg:table-cell truncate max-w-[220px]" title={log.user_agent}>
-                      {log.device || "—"}
-                    </td>
-                    <td className="text-gray-400 font-mono px-3 sm:px-4 py-2 tabular-nums">
-                      {formatDateTime(new Date(log.created_at), locale)}
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-white/5">
+                {data.logs.map((log, i) => {
+                  const locText = formatLocation(log.country, log.city);
+                  const isSuccess = Boolean(log.success);
+
+                  return (
+                    <tr key={log.created_at + i} className="hover:bg-white/[0.03] transition-colors group">
+                      <td className="text-gray-500 px-4 py-3.5 font-mono text-xs">{i + 1}</td>
+                      
+                      <td className="px-4 py-3.5">
+                        <span className="text-white font-bold">{log.username || "admin"}</span>
+                      </td>
+
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                            isSuccess
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              : "bg-red-500/10 text-red-400 border-red-500/30"
+                          }`}
+                        >
+                          {isSuccess ? <LogIn className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+                          {isSuccess ? tx.admin("login_logs_success") : tx.admin("login_logs_failure")}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3.5 font-mono text-xs">
+                        <span className="bg-black/40 text-amber-200/90 border border-white/10 px-2.5 py-1 rounded-lg">
+                          {log.ip || "—"}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 text-gray-200 font-medium">
+                          <MapPin className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                          <span>{locText}</span>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <DeviceIcon type={log.deviceType} />
+                            <span className="text-white font-semibold text-xs sm:text-sm">
+                              {log.deviceModel || log.device || "Appareil inconnu"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                            {log.browser && (
+                              <span className="bg-sky-500/10 text-sky-300 border border-sky-500/20 px-2 py-0.5 rounded-md font-medium">
+                                {log.browser}
+                              </span>
+                            )}
+                            {log.os && (
+                              <span className="bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded-md font-medium">
+                                {log.os}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="text-gray-400 font-mono text-xs px-4 py-3.5 whitespace-nowrap">
+                        {formatDateTime(new Date(log.created_at), locale)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         ) : (
-          <p className="text-gray-500 text-sm text-center py-10">{tx.admin("login_logs_no_data")}</p>
+          <p className="text-gray-500 text-sm text-center py-12">{tx.admin("login_logs_no_data")}</p>
         )}
       </div>
     </div>
