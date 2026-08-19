@@ -297,3 +297,15 @@ CREATE TABLE IF NOT EXISTS site_visits (
 
 CREATE INDEX IF NOT EXISTS idx_site_visits_created ON site_visits (created_at);
 CREATE INDEX IF NOT EXISTS idx_site_visits_page ON site_visits (page_path);
+
+-- 9. ADMIN LOGIN LOGS (audit trail of who logged in, when, from where)
+CREATE TABLE IF NOT EXISTS admin_login_logs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  username    TEXT    NOT NULL DEFAULT 'admin',
+  ip          TEXT,
+  user_agent  TEXT,
+  success     INTEGER NOT NULL DEFAULT 0,
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_admin_login_logs_created ON admin_login_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs (success);

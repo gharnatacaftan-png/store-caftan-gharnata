@@ -612,7 +612,23 @@ const translations = {
     unauthorized:       { ar: "غير مصرح",                 fr: "Non autorisé",            en: "Unauthorized" },
     login_blocked:      { ar: "تم حظر الدخول. حاول بعد {minutes} دقيقة.", fr: "Connexion bloquée. Réessayez dans {minutes} min.", en: "Login blocked. Try again in {minutes} min." },
     wrong_password:     { ar: "كلمة المرور غير صحيحة.",  fr: "Mot de passe incorrect.", en: "Wrong password." },
-    login_server_error: { ar: "خطأ في الاتصال بالخادم، حاول مرة أخرى.", fr: "Erreur de connexion au serveur, réessayez.", en: "Server error, please try again." },
+     login_server_error: { ar: "خطأ في الاتصال بالخادم، حاول مرة أخرى.", fr: "Erreur de connexion au serveur, réessayez.", en: "Server error, please try again." },
+
+    // Login audit logs
+    login_logs:            { ar: "سجلّات تسجيل الدخول",            fr: "Journal des connexions",       en: "Login Logs" },
+    login_logs_title:      { ar: "سجلّات تسجيل الدخول لوحة التحكم", fr: "Journal des connexions admin",  en: "Admin Login Logs" },
+    login_logs_subtitle:   { ar: "من سجّل الدخول، متى، ومن أين. كل محاولة (ناجحة أو فاشلة) تُسجّل.", fr: "Qui s'est connecté, quand et depuis où — chaque tentative (réussie ou échouée) est enregistrée.", en: "Who logged in, when, and from where — every attempt (success or failure) is recorded." },
+    login_logs_refresh:    { ar: "تحديث",                          fr: "Actualiser",                    en: "Refresh" },
+    login_logs_user:       { ar: "المستخدم",                        fr: "Utilisateur",                  en: "User" },
+    login_logs_ip:         { ar: "عنوان IP",                        fr: "Adresse IP",                    en: "IP" },
+    login_logs_device:     { ar: "الجهاز/المتصفح",                  fr: "Appareil / navigateur",        en: "Device / Browser" },
+    login_logs_when:       { ar: "الوقت",                            fr: "Quand",                        en: "When" },
+    login_logs_status:     { ar: "الحالة",                            fr: "Statut",                       en: "Status" },
+    login_logs_success:    { ar: "نجاح",                            fr: "Réussite",                     en: "Success" },
+    login_logs_failure:    { ar: "فشل",                              fr: "Échec",                        en: "Failure" },
+    login_logs_no_data:    { ar: "لا توجد محاولات دخول مسجّلة بعد.",  fr: "Aucune tentative enregistrée.",en: "No login attempts recorded yet." },
+    login_logs_table_missing:{ ar: "جدول سجلّات تسجيل الدخول غير موجود — نفّذ الترحيل 0003.", fr: "Table des logs de connexion absente — appliquez la migration 0003.", en: "login_logs table missing — apply migration 0003." },
+
 
     // Change password (dashboard settings)
     change_password:       { ar: "تغيير كلمة المرور",        fr: "Changer le mot de passe",      en: "Change Password" },

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { adminT } from "@/lib/admin-lang";
 import { d1QueryFirst, d1Execute } from "@/lib/db";
+import { recordLoginLog } from "@/lib/login-logs";
 
 // iron-session expects a CookieStore with a different `set` signature than
 // Next.js provides. We must cast through `any` — this is a known incompatibility
@@ -54,6 +55,7 @@ export async function loginAction(formData: FormData) {
     headersList.get("cf-connecting-ip") ||
     headersList.get("x-forwarded-for")?.split(",")[0].trim() ||
     "unknown";
+  const userAgent = headersList.get("user-agent") || "";
 
   // Rate limit check
   const rateCheck = checkRateLimit(ip);
@@ -88,8 +90,10 @@ export async function loginAction(formData: FormData) {
     }
   }
 
-  if (!isValid) {
+   if (!isValid) {
     recordFailedAttempt(ip);
+    // Best-effort audit: record the FAILED attempt (never blocks login).
+    void recordLoginLog({ ip, userAgent, success: false });
     const admin = await adminT();
     return { error: admin("wrong_password") };
   }
@@ -103,6 +107,9 @@ export async function loginAction(formData: FormData) {
   session.adminId = "admin";
   session.loginAt = Date.now();
   await session.save();
+
+  // Best-effort audit: record the SUCCESSFUL login (never blocks the redirect).
+  void recordLoginLog({ ip, userAgent, success: true });
 
   return { ok: true, redirectTo: "/gharnata-portal-x92" };
 }

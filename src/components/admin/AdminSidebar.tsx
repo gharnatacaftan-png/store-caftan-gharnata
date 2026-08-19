@@ -4,7 +4,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/app/gharnata-portal-x92/actions";
 import {
-  LayoutDashboard, Package, ShoppingBag, Truck, Settings, LogOut, X, Menu, HardDrive, BarChart2, Languages, Images
+  LayoutDashboard, Package, ShoppingBag, Truck, Settings, LogOut, X, Menu, HardDrive, BarChart2, Languages, Images, ShieldCheck
 } from "lucide-react";
 import { useState } from "react";
 import { useLang } from "@/hooks/useLang";
@@ -53,6 +53,7 @@ function NavContent({
     { href: "/gharnata-portal-x92/gallery", label: tx.admin("media_gallery"),  icon: Images },
     { href: "/gharnata-portal-x92/shipping",label: tx.admin("shipping_rates"), icon: Truck },
     { href: "/gharnata-portal-x92/analytics",label: tx.admin("analytics"),     icon: BarChart2 },
+    { href: "/gharnata-portal-x92/login-logs", label: tx.admin("login_logs"), icon: ShieldCheck },
     { href: "/gharnata-portal-x92/cleanup", label: tx.admin("cleanup"),        icon: HardDrive },
     { href: "/gharnata-portal-x92/settings",label: tx.admin("settings"),       icon: Settings },
   ];
