@@ -150,8 +150,8 @@ CREATE TABLE IF NOT EXISTS site_settings (
   address4_enabled   INTEGER NOT NULL DEFAULT 1,
   telegram_bot_token TEXT NOT NULL DEFAULT '',
   telegram_chat_id   TEXT NOT NULL DEFAULT '',
-  telegram_enabled   INTEGER NOT NULL DEFAULT 1,
-  updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+   telegram_enabled   INTEGER NOT NULL DEFAULT 1,
+   updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 INSERT OR IGNORE INTO site_settings (id, phone1, phone2, whatsapp, instagram)
