@@ -11,6 +11,9 @@ interface LoginLog {
   username: string;
   ip: string;
   user_agent: string;
+  country: string | null;
+  city: string | null;
+  device: string;
   success: number;
   created_at: string;
 }
@@ -37,6 +40,13 @@ export default function LoginLogsClient() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  function formatLocation(country: string | null | undefined, city: string | null | undefined): string {
+    const c = country && country !== "--" ? country : null;
+    const ci = city && city !== "--" ? city : null;
+    if (!c && !ci) return "—";
+    return c && ci ? `${ci}, ${c}` : (c || ci || "—");
+  }
 
   async function fetchLogs() {
     setLoading(true);
@@ -81,17 +91,20 @@ export default function LoginLogsClient() {
         <div className="mb-6 border border-[#D4AF37]/30 bg-[#D4AF37]/10 rounded-2xl p-5">
           <p className="text-[#D4AF37] font-semibold text-sm mb-3">⚠️ {tx.admin("login_logs_table_missing")}</p>
           <pre className="bg-black/40 text-[#D4AF37] text-xs rounded-xl p-4 overflow-x-auto leading-relaxed">{`CREATE TABLE IF NOT EXISTS admin_login_logs (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  username   TEXT    NOT NULL DEFAULT 'admin',
-  ip         TEXT,
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  username  TEXT    NOT NULL DEFAULT 'admin',
+  ip        TEXT,
   user_agent TEXT,
   success    INTEGER NOT NULL DEFAULT 0,
+  country    TEXT,
+  city       TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_admin_login_logs_created ON admin_login_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(success);
 
--- or run: wrangler d1 migrations apply caftan-gharnata-db --remote`}</pre>
+-- or run: wrangler d1 migrations apply caftan-gharnata-db --remote
+-- (also add country/city via migration 0004 if the table already exists)`}</pre>
         </div>
       )}
 
@@ -116,9 +129,10 @@ CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(succ
                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">#</th>
                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_user")}</th>
                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_status")}</th>
-                  <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden md:table-cell">{tx.admin("login_logs_ip")}</th>
-                  <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden lg:table-cell">{tx.admin("login_logs_device")}</th>
-                  <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_when")}</th>
+                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden md:table-cell">{tx.admin("login_logs_ip")}</th>
+                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden lg:table-cell">{tx.admin("login_logs_location")}</th>
+                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5 hidden lg:table-cell">{tx.admin("login_logs_device")}</th>
+                   <th className="text-gray-400 font-medium px-3 sm:px-4 py-2.5">{tx.admin("login_logs_when")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,9 +148,10 @@ CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(succ
                         {log.success ? tx.admin("login_logs_success") : tx.admin("login_logs_failure")}
                       </span>
                     </td>
-                    <td className="text-gray-300 font-mono px-3 sm:px-4 py-2 hidden md:table-cell">{log.ip || "—"}</td>
-                    <td className="text-gray-400 px-3 sm:px-4 py-2 hidden lg:table-cell truncate max-w-[280px]" title={log.user_agent}>
-                      {log.user_agent || "—"}
+                    <td className="text-gray-300 font-mono px-3 sm:px-4 py-2 hidden md:table-cell break-all max-w-[140px]">{log.ip || "—"}</td>
+                    <td className="text-gray-400 px-3 sm:px-4 py-2 hidden lg:table-cell">{formatLocation(log.country, log.city)}</td>
+                    <td className="text-gray-400 px-3 sm:px-4 py-2 hidden lg:table-cell truncate max-w-[220px]" title={log.user_agent}>
+                      {log.device || "—"}
                     </td>
                     <td className="text-gray-400 font-mono px-3 sm:px-4 py-2 tabular-nums">
                       {formatDateTime(new Date(log.created_at), locale)}

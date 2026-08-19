@@ -11,11 +11,57 @@ interface LoginLogRow {
   username: string;
   ip: string;
   user_agent: string;
+  country: string | null;
+  city: string | null;
   success: number;
   created_at: string;
 }
 
 const DEFAULT_LIMIT = 100;
+
+// Lightweight device detection from the User-Agent. We only need a human-readable
+// label (e.g. "Oppo Reno 11", "Samsung SM-S928B", "Apple iPhone 15", "Desktop").
+// ntfy/telegram already carry the raw UA in `user_agent`; this is just for UX.
+export function deviceFromUA(ua: string): string {
+  if (!ua) return "Unknown device";
+  const u = ua;
+
+  if (/iPad/i.test(u)) return "Apple iPad";
+
+  const iphoneMatch = u.match(/iPhone(?:[ _-]OS[ _]?([\d_]+))?/i);
+  if (/iPhone|iPod/i.test(u)) {
+    const os = iphoneMatch?.[1]?.replace(/_/g, ".");
+    return "Apple iPhone" + (os ? ` ${os}` : "");
+  }
+
+  const samsungMatch = u.match(/(SM-[A-Za-z0-9]+)/i);
+  if (/Samsung/i.test(u)) return "Samsung" + (samsungMatch?.[1] ? ` ${samsungMatch[1]}` : "");
+
+  if (/OPPO/i.test(u)) {
+    const m = u.match(/OPPO[ _-]?([A-Za-z0-9 _-]+)/i);
+    const model = m?.[1]?.trim().replace(/\s+/g, " ");
+    return "Oppo" + (model ? ` ${model}` : "");
+  }
+  if (/Xiaomi|Mi[ _][A-Z0-9]/i.test(u)) {
+    const m = u.match(/Xiaomi[ _-]?([A-Za-z0-9 _-]+)/i) || u.match(/Mi[ _-]([A-Za-z0-9 _-]+)/i);
+    return "Xiaomi" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
+  }
+  if (/Realme/i.test(u)) {
+    const m = u.match(/Realme[ _-]?([A-Za-z0-9 _-]+)/i);
+    return "Realme" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
+  }
+  if (/Vivo/i.test(u)) {
+    const m = u.match(/Vivo[ _-]?([A-Za-z0-9 _-]+)/i);
+    return "Vivo" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
+  }
+  if (/OnePlus/i.test(u)) {
+    const m = u.match(/OnePlus[ _-]?([A-Za-z0-9 _-]+)/i);
+    return "OnePlus" + (m?.[1] ? ` ${m[1].replace(/\s+/g, " ").trim()}` : "");
+  }
+
+  if (/Tablet|Android.+Mobile|Android.+touch/i.test(u) && !/Mobile/i.test(u)) return "Tablet";
+  return /Mobile|Android|iP(hone|od)/i.test(u) ? "Mobile" : "Desktop";
+}
 
 export async function GET(req: NextRequest) {
   const session = await requireAdminSession();
@@ -26,20 +72,23 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") || DEFAULT_LIMIT)));
 
     const rows = await d1Query<LoginLogRow>(
-      `SELECT username, ip, user_agent, success, created_at
+      `SELECT username, ip, user_agent, country, city, success, created_at
        FROM admin_login_logs
        ORDER BY id DESC
        LIMIT ?`,
       [limit]
     );
 
-    return okResponse({ ok: true, logs: rows });
+    const logs = rows.map((r) => ({
+      ...r,
+      device: deviceFromUA(r.user_agent || ""),
+    }));
+
+    return okResponse({ ok: true, logs });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const tableMissing = msg.includes("no such table");
     if (tableMissing) {
-      // Migration 0003 not applied yet — return empty so the UI can show the
-      // SQL setup banner (mirrors the analytics "table missing" pattern).
       return okResponse({ ok: true, logs: [], tableMissing: true });
     }
     console.error("[admin/login-logs GET]", err);

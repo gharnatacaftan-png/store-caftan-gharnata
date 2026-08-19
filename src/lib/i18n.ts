@@ -621,6 +621,7 @@ const translations = {
     login_logs_refresh:    { ar: "تحديث",                          fr: "Actualiser",                    en: "Refresh" },
     login_logs_user:       { ar: "المستخدم",                        fr: "Utilisateur",                  en: "User" },
     login_logs_ip:         { ar: "عنوان IP",                        fr: "Adresse IP",                    en: "IP" },
+    login_logs_location:   { ar: "الموقع",                         fr: "Emplacement",                   en: "Location" },
     login_logs_device:     { ar: "الجهاز/المتصفح",                  fr: "Appareil / navigateur",        en: "Device / Browser" },
     login_logs_when:       { ar: "الوقت",                            fr: "Quand",                        en: "When" },
     login_logs_status:     { ar: "الحالة",                            fr: "Statut",                       en: "Status" },

@@ -56,6 +56,11 @@ export async function loginAction(formData: FormData) {
     headersList.get("x-forwarded-for")?.split(",")[0].trim() ||
     "unknown";
   const userAgent = headersList.get("user-agent") || "";
+  // Cloudflare edge geolocalizes the visitor and exposes country + city headers.
+  // These are optional/best-effort: if absent (e.g. local dev, or non-Cloudflare)
+  // we log "unknown" — the login log feature must never depend on them.
+  const country = headersList.get("cf-ipcountry") || headersList.get("x-vercel-ipcountry") || null;
+  const city = headersList.get("cf-ipcity") || null;
 
   // Rate limit check
   const rateCheck = checkRateLimit(ip);
@@ -92,8 +97,7 @@ export async function loginAction(formData: FormData) {
 
    if (!isValid) {
     recordFailedAttempt(ip);
-    // Best-effort audit: record the FAILED attempt (never blocks login).
-    void recordLoginLog({ ip, userAgent, success: false });
+    void recordLoginLog({ ip, userAgent, country: country || undefined, city: city || undefined, success: false });
     const admin = await adminT();
     return { error: admin("wrong_password") };
   }
@@ -109,7 +113,7 @@ export async function loginAction(formData: FormData) {
   await session.save();
 
   // Best-effort audit: record the SUCCESSFUL login (never blocks the redirect).
-  void recordLoginLog({ ip, userAgent, success: true });
+  void recordLoginLog({ ip, userAgent, country: country || undefined, city: city || undefined, success: true });
 
   return { ok: true, redirectTo: "/gharnata-portal-x92" };
 }

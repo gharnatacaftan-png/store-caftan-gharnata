@@ -7,6 +7,8 @@ export interface LoginLogEntry {
   ip: string;
   userAgent: string;
   success: boolean;
+  country?: string;
+  city?: string;
 }
 
 // Best-effort audit write: a failure here must NEVER break the login/logout
@@ -16,12 +18,20 @@ export interface LoginLogEntry {
 export async function recordLoginLog(entry: LoginLogEntry): Promise<void> {
   try {
     await d1Execute(
-      `INSERT INTO admin_login_logs (username, ip, user_agent, success)
-       VALUES (?, ?, ?, ?)`,
-      [entry.username ?? "admin", entry.ip, entry.userAgent ?? "", entry.success ? 1 : 0]
+      `INSERT INTO admin_login_logs (username, ip, user_agent, success, country, city)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        entry.username ?? "admin",
+        entry.ip,
+        entry.userAgent ?? "",
+        entry.success ? 1 : 0,
+        entry.country || null,
+        entry.city || null,
+      ]
     );
   } catch (err) {
-    // Table missing / D1 unreachable / permission issue → swallow. auth never degrades.
+    // Table missing (migration 0003/0004 not applied) / D1 unreachable /
+    // permission issue → swallow. auth NEVER degrades because of logging.
     dbLogger.warn("admin_login_logs insert skipped", {
       reason: err instanceof Error ? err.message : String(err),
       ip: entry.ip,

@@ -305,6 +305,8 @@ CREATE TABLE IF NOT EXISTS admin_login_logs (
   ip          TEXT,
   user_agent  TEXT,
   success     INTEGER NOT NULL DEFAULT 0,
+  country     TEXT,
+  city        TEXT,
   created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_admin_login_logs_created ON admin_login_logs (created_at);
