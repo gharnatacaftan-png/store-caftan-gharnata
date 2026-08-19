@@ -45,13 +45,16 @@ function sanitizeNtfyHeader(value: string): string {
 }
 
 // ntfy.sh is plain-text/Markdown, NOT HTML: it cannot render Telegram's HTML
-// markup (<b>, <a>). To make the ntfy mirror IDENTICAL in content to the
-// Telegram order message, we strip HTML tags from the Telegram message but
-// keep every URL visible inline (hyperlink text -> "text + URL").
-function ntfyPlainText(tgHtml: string): string {
+// markup (<b>, <a>). Post the Markdown header (already done by postToNtfy) and
+// convert Telegram HTML to Markdown so ntfy shows the EXACT same content as
+// Telegram, with blue clickable links like [text](url) instead of raw URLs.
+function ntfyMarkdown(tgHtml: string): string {
   return tgHtml
-    .replace(/<a href="([^"]+)">([\s\S]*?)<\/a>/g, (_, url: string, text: string) => `${text}\n🔗 ${url}`)
-    .replace(/<b>(.*?)<\/b>/g, "$1")
+    .replace(/<a href="([^"]+)">([\s\S]*?)<\/a>/g, (_m, url: string, text: string) => {
+      const safeUrl = url.replace(/\(/g, "%28").replace(/\)/g, "%29");
+      return `[${text}](${safeUrl})`;
+    })
+    .replace(/<b>(.*?)<\/b>/g, "**$1**")
     .replace(/<[^>]+>/g, "");
 }
 
@@ -336,9 +339,9 @@ ${itemsText}
     if (settings.ntfy_enabled !== false && ntfyTopic) {
       const ntfyTitle = `New order #${data.orderId} - Caftan Gharnata`;
       // EXACT same content as the Telegram message (Arabic, prices, every
-      // product line, client info, bon link) — just rendered as plain text
-      // since ntfy can't display Telegram HTML.
-      const ntfyMessage = ntfyPlainText(message);
+      // product line, client info, bon link) — rendered as Markdown so ntfy
+      // shows it like Telegram: blue clickable links, bold product names.
+      const ntfyMessage = ntfyMarkdown(message);
       ntfyDelivered = await postToNtfy(
         ntfyTopic,
         ntfyTitle,
