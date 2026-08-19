@@ -49,7 +49,8 @@ export async function GET(req: NextRequest) {
         headersList.get("cf-connecting-ip") ||
         headersList.get("x-forwarded-for")?.split(",")[0].trim() ||
         "unknown";
-      const userAgent = headersList.get("user-agent") || "";
+      const secModel = headersList.get("sec-ch-ua-model")?.replace(/"/g, "").trim();
+      const userAgent = (headersList.get("user-agent") || "") + (secModel ? ` Model/${secModel}` : "");
       const country = headersList.get("cf-ipcountry") || headersList.get("x-vercel-ipcountry") || null;
       const city = headersList.get("cf-ipcity") || null;
 

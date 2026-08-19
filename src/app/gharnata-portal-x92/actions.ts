@@ -55,7 +55,8 @@ export async function loginAction(formData: FormData) {
     headersList.get("cf-connecting-ip") ||
     headersList.get("x-forwarded-for")?.split(",")[0].trim() ||
     "unknown";
-  const userAgent = headersList.get("user-agent") || "";
+  const secModel = headersList.get("sec-ch-ua-model")?.replace(/"/g, "").trim();
+  const userAgent = (headersList.get("user-agent") || "") + (secModel ? ` Model/${secModel}` : "");
   // Cloudflare edge geolocalizes the visitor and exposes country + city headers.
   // These are optional/best-effort: if absent (e.g. local dev, or non-Cloudflare)
   // we log "unknown" — the login log feature must never depend on them.
