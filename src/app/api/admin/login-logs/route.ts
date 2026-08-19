@@ -86,12 +86,17 @@ export async function GET(req: NextRequest) {
 
     return okResponse({ ok: true, logs });
   } catch (err: unknown) {
+    // Treat any missing-table / missing-column (i.e. migration 0003 or 0004
+    // not applied on prod) as "set up the table" instead of a raw 500. We
+    // return 200 + a flag so the dashboard can show the SQL banner (mirrors the
+    // analytics pattern) instead of a generic "خطأ في الخادم" server error.
     const msg = err instanceof Error ? err.message : String(err);
-    const tableMissing = msg.includes("no such table");
-    if (tableMissing) {
+    if (/no such table|no such column|has no column|does not exist/i.test(msg)) {
       return okResponse({ ok: true, logs: [], tableMissing: true });
     }
     console.error("[admin/login-logs GET]", err);
-    return errorResponse("Failed to load login logs", 500);
+    // Surface the real cause to the UI (not a 500, so errorResponse doesn't
+    // sanitize it to a generic "خطأ في الخادم").
+    return okResponse({ ok: true, logs: [], error: msg });
   }
 }

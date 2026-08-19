@@ -628,7 +628,8 @@ const translations = {
     login_logs_success:    { ar: "نجاح",                            fr: "Réussite",                     en: "Success" },
     login_logs_failure:    { ar: "فشل",                              fr: "Échec",                        en: "Failure" },
     login_logs_no_data:    { ar: "لا توجد محاولات دخول مسجّلة بعد.",  fr: "Aucune tentative enregistrée.",en: "No login attempts recorded yet." },
-    login_logs_table_missing:{ ar: "جدول سجلّات تسجيل الدخول غير موجود — نفّذ الترحيل 0003.", fr: "Table des logs de connexion absente — appliquez la migration 0003.", en: "login_logs table missing — apply migration 0003." },
+    login_logs_table_missing:{ ar: "جدول سجلّات تسجيل الدخول غير موجود — نفّذ الترحيل 0003.", fr: "Table des logs de connexion absente — appliquez la migration 0003.", en: "Login-logs table missing — apply migration 0003." },
+    login_logs_apply_hint: { ar: "حمّل الجدول + الأعمدة (ترحيل 0003 + 0004) على D1 ثم حدّث.", fr: "Appliquez les migrations 0003 + 0004 sur D1 puis rafraîchissez.", en: "Apply migrations 0003 + 0004 on D1, then refresh." },
 
 
     // Change password (dashboard settings)

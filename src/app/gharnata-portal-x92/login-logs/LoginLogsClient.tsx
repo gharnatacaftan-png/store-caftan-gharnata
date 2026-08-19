@@ -22,6 +22,7 @@ interface ApiResponse {
   ok: boolean;
   logs: LoginLog[];
   tableMissing?: boolean;
+  error?: string;
 }
 
 function statusIcon(success: number) {
@@ -74,6 +75,7 @@ export default function LoginLogsClient() {
   useEffect(() => { void fetchLogs(); }, []);
 
   const tableMissing = data?.tableMissing;
+  const serverError = data?.error || null;
 
   return (
     <div className="p-4 sm:p-6 lg:p-10" dir={dir}>
@@ -108,7 +110,14 @@ CREATE INDEX IF NOT EXISTS idx_admin_login_logs_success ON admin_login_logs(succ
         </div>
       )}
 
-      {error && !tableMissing && (
+      {serverError && !tableMissing && (
+        <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">
+          ⚠️ {serverError}
+          <p className="text-xs mt-1 opacity-80">{tx.admin("login_logs_apply_hint")}</p>
+        </div>
+      )}
+
+      {error && !tableMissing && !serverError && (
         <div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-xl">
           ⚠️ {error}
         </div>
