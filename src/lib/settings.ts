@@ -43,6 +43,10 @@ export interface SiteSettings {
   telegram_bot_token?: string;
   telegram_chat_id?: string;
   telegram_enabled?: boolean;
+  // ntfy.sh mirror notifications (optional, opt-in). Stored only when the
+  // `ntfy_topic`/`ntfy_enabled` columns exist on the DB (OPTIONAL_COLS safety).
+  ntfy_topic?: string;
+  ntfy_enabled?: boolean;
 }
 
 const DEFAULT_SETTINGS: SiteSettings = {
@@ -79,6 +83,8 @@ address3_enabled: true,
   telegram_bot_token: "",
   telegram_chat_id: "",
   telegram_enabled: true,
+  ntfy_topic: "",
+  ntfy_enabled: false,
 };
 
 // Optional columns added by the social/contact migrations. Detected once via
@@ -90,12 +96,14 @@ const OPTIONAL_STRING_COLS = [
   "address1", "address1_url", "address2", "address2_url", "address3", "address3_url",
   "address4", "address4_url",
   "telegram_bot_token", "telegram_chat_id",
+  "ntfy_topic",
 ] as const;
 const OPTIONAL_BOOL_COLS = [
   "instagram_enabled", "facebook_enabled", "tiktok_enabled", "x_enabled", "location_enabled",
   "phone1_enabled", "phone2_enabled", "phone3_enabled",
   "address1_enabled", "address2_enabled", "address3_enabled", "address4_enabled",
   "telegram_enabled",
+  "ntfy_enabled",
 ] as const;
 const OPTIONAL_COLS = [...OPTIONAL_STRING_COLS, ...OPTIONAL_BOOL_COLS] as const;
 
@@ -209,6 +217,8 @@ export async function updateSiteSettings(settings: SiteSettings): Promise<SiteSe
     telegram_bot_token: (settings.telegram_bot_token ?? "").trim(),
     telegram_chat_id: (settings.telegram_chat_id ?? "").trim(),
     telegram_enabled: Boolean(settings.telegram_enabled),
+    ntfy_topic: (settings.ntfy_topic ?? "").trim(),
+    ntfy_enabled: Boolean(settings.ntfy_enabled),
   };
 
   try {

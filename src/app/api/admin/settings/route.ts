@@ -14,6 +14,11 @@ function cleanTelegramChatId(value: unknown): string {
   return parseTelegramChatIds(String(value || "")).join(";");
 }
 
+function cleanNtfyTopic(value: unknown): string {
+  // ntfy.sh topic: on garde une seule valeur, espaces éliminés.
+  return String(value || "").trim().replace(/\s+/g, "");
+}
+
 export async function GET(req: NextRequest) {
   if (!await isAdminRequest(req)) return errorResponse("Unauthorized", 401);
   const settings = await getSiteSettings();
@@ -82,6 +87,8 @@ export async function POST(req: NextRequest) {
       "",
     telegram_chat_id: cleanTelegramChatId(body.telegram_chat_id),
     telegram_enabled: body.telegram_enabled === true,
+    ntfy_topic: cleanNtfyTopic(body.ntfy_topic),
+    ntfy_enabled: body.ntfy_enabled === true,
   });
 
   return okResponse({ ok: true, settings: settings as unknown as Record<string, unknown> });

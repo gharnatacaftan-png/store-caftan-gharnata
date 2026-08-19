@@ -49,6 +49,10 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
   const TELEGRAM_BOT_TOKEN = initialSettings.telegram_bot_token || "";
   const [telegramEnabled, setTelegramEnabled] = useState(initialSettings.telegram_enabled ?? true);
   const [telegramChatId, setTelegramChatId] = useState(initialSettings.telegram_chat_id ?? "");
+  const [ntfyEnabled, setNtfyEnabled] = useState(initialSettings.ntfy_enabled ?? false);
+  const [ntfyTopic, setNtfyTopic] = useState(initialSettings.ntfy_topic ?? "");
+  const [testingNtfy, setTestingNtfy] = useState(false);
+  const [ntfyResult, setNtfyResult] = useState<{ ok?: boolean; error?: string } | null>(null);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testResult, setTestResult] = useState<{ ok?: boolean; error?: string } | null>(null);
 
@@ -115,6 +119,32 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
     }
   }
 
+  async function handleTestNtfy() {
+    setTestingNtfy(true);
+    setNtfyResult(null);
+    try {
+      const csrfToken = await getCsrfToken();
+      const res = await fetch("/api/admin/test-ntfy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        body: JSON.stringify({ topic: ntfyTopic }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setNtfyResult({ ok: true });
+      } else {
+        setNtfyResult({ error: data.error || "فشل إرسال اختبار ntfy" });
+      }
+    } catch {
+      setNtfyResult({ error: "تعذر الاتصال بالخادم" });
+    } finally {
+      setTestingNtfy(false);
+    }
+  }
+
   async function handleChangePassword() {
     setPwError("");
     setPwDone(false);
@@ -168,6 +198,8 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
         address4: addresses[3].text, address4_url: addresses[3].url, address4_enabled: addresses[3].enabled,
         telegram_enabled: telegramEnabled,
         telegram_chat_id: telegramChatId,
+        ntfy_topic: ntfyTopic,
+        ntfy_enabled: ntfyEnabled,
       }),
     });
     setSaving(false);
@@ -405,6 +437,59 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
               className="w-full border border-white/10 rounded-xl py-2.5 text-xs text-white bg-white/5 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
               <Send className="w-3.5 h-3.5 text-[#D4AF37]" />
               {testingTelegram ? (lang === "ar" ? "جاري الإرسال..." : "Envoi...") : (lang === "ar" ? "إرسال رسالة تجريبية لتلغرام" : "Envoyer un message test")}
+            </button>
+          </div>
+        </div>
+
+        {/* ntfy.sh Notifications (optional mirror of Telegram) */}
+        <div className="bg-[#111118] border border-white/5 rounded-2xl p-6">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h2 className="text-white font-semibold flex items-center gap-2">
+              {lang === "ar" ? "إشعارات ntfy.sh" : lang === "fr" ? "Notifications ntfy.sh" : "ntfy.sh Notifications"}
+            </h2>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-xs">{lang === "ar" ? "تفعيل" : "Activer"}</span>
+              <Toggle on={ntfyEnabled} onChange={setNtfyEnabled} label="ntfy" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-xs mb-5">
+            {lang === "ar"
+              ? "استقبل إشعارات الطلائق مباشرة على ntfy.sh بجانب تلغرام. أنشئ قناة خاصة أو استخدم قناة عامة."
+              : lang === "fr"
+              ? "Recevez les notifications commandes sur ntfy.sh en plus de Telegram. Créez ou utilisez un topic."
+              : "Receive order notifications on ntfy.sh in addition to Telegram. Use a private or public topic."}
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-xs mb-1 block">ntfy.sh Topic (معرف القناة)</label>
+              <input value={ntfyTopic} onChange={(e) => setNtfyTopic(e.target.value)} disabled={!ntfyEnabled}
+                className={`w-full bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 disabled:opacity-40 ${ntfyEnabled ? "" : "pointer-events-none"}`}
+                dir="ltr" placeholder="ex: caftan-commandes" />
+              <p className="text-gray-500 text-[11px] mt-1">
+                {lang === "ar"
+                  ? "أرسل الإشعارات إلى هذا الموضوع على ntfy.sh — افتح https://ntfy.sh/<topic> لاستقبالها."
+                  : lang === "fr"
+                  ? "Envoie les notifications vers ce topic ntfy.sh — ouvre https://ntfy.sh/<topic> pour les recevoir."
+                  : "Send notifications to this ntfy.sh topic — open https://ntfy.sh/<topic> to receive them."}
+              </p>
+            </div>
+
+            {ntfyResult?.ok && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs px-4 py-2.5 rounded-xl">
+                ✓ {lang === "ar" ? "تم إرسال اختبار ntfy بنجاح!" : lang === "fr" ? "Test ntfy envoyé avec succès !" : "ntfy test sent successfully!"}
+              </div>
+            )}
+            {ntfyResult?.error && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs px-4 py-2.5 rounded-xl">
+                ⚠️ {ntfyResult.error}
+              </div>
+            )}
+
+            <button type="button" onClick={handleTestNtfy} disabled={!ntfyEnabled || testingNtfy || !ntfyTopic}
+              className="w-full border border-white/10 rounded-xl py-2.5 text-xs text-white bg-white/5 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
+              <Send className="w-3.5 h-3.5 text-[#D4AF37]" />
+              {testingNtfy ? (lang === "ar" ? "جاري الإرسال..." : "Envoi...") : (lang === "ar" ? "إرسال اختبار ntfy" : lang === "fr" ? "Envoyer un test ntfy" : "Send ntfy test")}
             </button>
           </div>
         </div>

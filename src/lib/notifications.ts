@@ -26,6 +26,13 @@ interface OrderNotificationData {
 const TELEGRAM_TIMEOUT_MS = 4_000;
 const STORE_URL = "https://www.caftan-gharnata.com";
 
+// ntfy.sh mirror (optional, opt-in). A single topic string is enough — the
+// subscriber just opens https://ntfy.sh/<topic> to receive notifications.
+const NTFY_HOST = "ntfy.sh";
+const NTFY_TIMEOUT_MS = 4_000;
+const NTFY_DEFAULT_TAGS = "shopping_cart,receipt_receiver";
+
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -133,6 +140,70 @@ function postDocumentToTelegram(
   });
 }
 
+// POST to ntfy.sh/<topic>. Best-effort: a failure here must never break the
+// order — ntfy is a convenience mirror of the Telegram notification.
+function postToNtfy(
+  topic: string,
+  title: string,
+  message: string,
+  opts: { clickUrl?: string; priority?: string; tags?: string } = {},
+  timeoutMs = NTFY_TIMEOUT_MS
+): Promise<{ ok: boolean; description?: string }> {
+  return new Promise((resolve, reject) => {
+    const payload = Buffer.from(message, "utf8");
+    const path = `/${encodeURIComponent(topic)}`;
+    const options = {
+      hostname: NTFY_HOST,
+      path,
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Length": String(payload.length),
+        "Title": title,
+        "Markdown": "yes",
+        "Priority": opts.priority || "4",
+        "Tags": opts.tags || NTFY_DEFAULT_TAGS,
+        ...(opts.clickUrl ? { "Click": opts.clickUrl } : {}),
+      },
+      timeout: timeoutMs,
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        resolve({ ok: res.statusCode === 200, description: res.statusCode !== 200 ? `HTTP ${res.statusCode} ${data}` : undefined });
+      });
+    });
+    req.on("timeout", () => { req.destroy(); reject(new Error(`ntfy request timed out (${timeoutMs}ms)`)); });
+    req.on("error", (e) => reject(e));
+    req.write(payload);
+    req.end();
+  });
+}
+
+export async function sendTestNtfyNotification(topic: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const cleanTopic = topic.trim().replace(/\s+/g, "");
+    if (!cleanTopic) {
+      return { ok: false, error: "Veuillez saisir un Topic ntfy.sh." };
+    }
+
+    const message = `🔔 رسالة اختبار - قفطان غرناطة
+
+✅ الاتصال بـ ntfy.sh يعمل بشكل صحيح.
+${formatDateTime(new Date(), "ar-DZ")}`;
+    const result = await postToNtfy(cleanTopic, "قفطان غرناطة — اختبار ntfy", message, {}, 6_000);
+
+    if (result.ok) return { ok: true };
+    return { ok: false, error: `ntfy: ${result.description || "Unknown error"}` };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erreur de connexion ntfy";
+    return { ok: false, error: message };
+  }
+}
+
 export async function sendTestTelegramNotification(botToken: string, chatId: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const cleanToken = botToken.trim();
@@ -183,21 +254,7 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
       process.env.TELEGRAM_CHAT_ID?.trim() ||
       ""
     );
-
-    if (settings.telegram_enabled === false) {
-      console.log("[telegram] Notifications disabled in settings, skipping");
-      return false;
-    }
-
-    if (
-      !isConfiguredTelegramValue(botToken, "YOUR_BOT_TOKEN") ||
-      chatIds.length === 0 ||
-      chatIds.every((id) => !isConfiguredTelegramValue(id, "YOUR_CHAT_ID"))
-    ) {
-      console.warn("[telegram] Bot token or chat ID(s) not configured, skipping notification");
-      return false;
-    }
-
+    const ntfyTopic = settings.ntfy_topic?.trim() || process.env.NTFY_TOPIC?.trim() || "";
 
     const lang = data.lang === "fr" ? "الفرنسية" : data.lang === "en" ? "الإنجليزية" : "العربية";
     const shippingTypeText = data.shippingType === "HOME" ? "المنزل 🏠" : "مكتب البريد (Stop Desk) 🏢";
@@ -248,35 +305,75 @@ ${itemsText}
     const docUrl = `${STORE_URL}/bon/${data.orderId}?type=livraison&lang=${encodeURIComponent(data.lang ?? "ar")}`;
     const docCaption = `📄 بون الطلب #${data.orderId} — قفطان غرناطة`;
 
-    const results = await Promise.all(
-      chatIds.map(async (chatId) => {
-        const messageP = postToTelegram(botToken, chatId, message).catch((e: unknown) => ({
-          ok: false,
-          description: e instanceof Error ? e.message : "message failed",
-        }));
-        const docP = postDocumentToTelegram(botToken, chatId, docUrl, docCaption).catch((e: unknown) => ({
-          ok: false,
-          description: e instanceof Error ? e.message : "document failed",
-        }));
-        const [msgResult, docResult] = await Promise.all([messageP, docP]);
-        return { chatId, msgResult, docResult };
-      })
-    );
+    // Optional ntfy.sh mirror — best-effort, never blocks the Telegram path or
+    // the order. Sent only when enabled + topic configured. Tracked so the
+    // function can report overall success even if Telegram is disabled.
+    let ntfyDelivered = false;
+    if (settings.ntfy_enabled !== false && ntfyTopic) {
+      const ntfyTitle = `🛒 طلب جديد #${data.orderId} — قفطان غرناطة`;
+      const ntfyMessage = `🛒 طلب #${data.orderId} — ${data.customerName} — ${data.totalPrice.toLocaleString("fr-FR")} د.ج
+🚚 ${shippingTypeText}
+📍 ${data.commune} / ${data.wilayaName}
 
-    let delivered = false;
-    for (const { chatId, msgResult, docResult } of results) {
-      if (msgResult.ok) {
-        delivered = true;
-      } else {
-        console.error("[telegram] Failed to send notification to chat", chatId, "-", msgResult.description);
-      }
-      if (!docResult.ok) {
-        // Non-fatal: the order + product details are already in the text message.
-        console.warn("[telegram] Order slip document not sent for order #", data.orderId, "to chat", chatId, "-", docResult.description);
-      }
+عرض البون: ${docUrl}`;
+      ntfyDelivered = await postToNtfy(
+        ntfyTopic,
+        ntfyTitle,
+        ntfyMessage,
+        { clickUrl: docUrl },
+        NTFY_TIMEOUT_MS
+      )
+        .then((r) => r.ok)
+        .catch((e: unknown) => {
+          console.warn("[ntfy] notification send failed:", e instanceof Error ? e.message : e);
+          return false;
+        });
     }
 
-    return delivered;
+    // A single order can be delivered to several Telegram accounts at once: we
+    // fan out to every configured chat id. Skipped entirely (not failed) when
+    // Telegram is disabled or not configured — ntfy can still deliver.
+    let delivered = false;
+    const telegramReady =
+      settings.telegram_enabled !== false &&
+      isConfiguredTelegramValue(botToken, "YOUR_BOT_TOKEN") &&
+      chatIds.length > 0 &&
+      chatIds.some((id) => isConfiguredTelegramValue(id, "YOUR_CHAT_ID"));
+
+    if (telegramReady) {
+      const results = await Promise.all(
+        chatIds.map(async (chatId) => {
+          const messageP = postToTelegram(botToken, chatId, message).catch((e: unknown) => ({
+            ok: false,
+            description: e instanceof Error ? e.message : "message failed",
+          }));
+          const docP = postDocumentToTelegram(botToken, chatId, docUrl, docCaption).catch((e: unknown) => ({
+            ok: false,
+            description: e instanceof Error ? e.message : "document failed",
+          }));
+          const [msgResult, docResult] = await Promise.all([messageP, docP]);
+          return { chatId, msgResult, docResult };
+        })
+      );
+
+      for (const { chatId, msgResult, docResult } of results) {
+        if (msgResult.ok) {
+          delivered = true;
+        } else {
+          console.error("[telegram] Failed to send notification to chat", chatId, "-", msgResult.description);
+        }
+        if (!docResult.ok) {
+          // Non-fatal: the order + product details are already in the text message.
+          console.warn("[telegram] Order slip document not sent for order #", data.orderId, "to chat", chatId, "-", docResult.description);
+        }
+      }
+    } else if (settings.telegram_enabled === false) {
+      console.log("[telegram] Notifications disabled in settings, skipping");
+    } else {
+      console.warn("[telegram] Bot token or chat ID(s) not configured, skipping telegram");
+    }
+
+    return delivered || ntfyDelivered;
   } catch (err) {
     console.error("[telegram] Notification error:", err);
     return false;

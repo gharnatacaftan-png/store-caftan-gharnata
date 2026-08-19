@@ -278,6 +278,12 @@ ALTER TABLE site_settings ADD COLUMN address4_enabled INTEGER NOT NULL DEFAULT 1
 ALTER TABLE site_settings ADD COLUMN telegram_bot_token TEXT NOT NULL DEFAULT '';
 ALTER TABLE site_settings ADD COLUMN telegram_chat_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE site_settings ADD COLUMN telegram_enabled INTEGER NOT NULL DEFAULT 1;
+
+-- ntfy.sh order notification mirror (optional, opt-in). These are ADD COLUMN
+-- so existing databases keep working: until the column is added, ntfy stays
+-- disabled by default. The code reads them through the OPTIONAL_COLS guard.
+ALTER TABLE site_settings ADD COLUMN ntfy_topic   TEXT    NOT NULL DEFAULT '';
+ALTER TABLE site_settings ADD COLUMN ntfy_enabled INTEGER NOT NULL DEFAULT 0;
 UPDATE site_settings SET address1_url = location_url WHERE address1_url = '' AND location_url != '';
 
 -- 8. SITE VISITS (anonymous visit analytics)
