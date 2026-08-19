@@ -32,6 +32,19 @@ const NTFY_HOST = "ntfy.sh";
 const NTFY_TIMEOUT_MS = 4_000;
 const NTFY_DEFAULT_TAGS = "shopping_cart,receipt_receiver";
 
+// ntfy.sh (and the Cloudflare edge in front of it) reject non-ASCII bytes in
+// HTTP HEADERS (Title, Tags, Click, ...). The message BODY may stay UTF-8
+// (Arabic, emoji, ...), but every header value MUST be pure ASCII. This strips
+// anything non-ASCII so we never crash an order notification over a header.
+function sanitizeNtfyHeader(value: string): string {
+  return String(value ?? "")
+    .split("")
+    .filter((c) => c.charCodeAt(0) <= 127)
+    .join("")
+    .trim();
+}
+
+
 
 function escapeHtml(text: string): string {
   return text
@@ -156,14 +169,14 @@ function postToNtfy(
       hostname: NTFY_HOST,
       path,
       method: "POST",
-      headers: {
+       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Content-Length": String(payload.length),
-        "Title": title,
+        "Title": sanitizeNtfyHeader(title),
         "Markdown": "yes",
-        "Priority": opts.priority || "4",
-        "Tags": opts.tags || NTFY_DEFAULT_TAGS,
-        ...(opts.clickUrl ? { "Click": opts.clickUrl } : {}),
+        "Priority": sanitizeNtfyHeader(opts.priority || "4"),
+        "Tags": sanitizeNtfyHeader(opts.tags || NTFY_DEFAULT_TAGS),
+        ...(opts.clickUrl ? { "Click": sanitizeNtfyHeader(opts.clickUrl) } : {}),
       },
       timeout: timeoutMs,
     };
@@ -194,7 +207,7 @@ export async function sendTestNtfyNotification(topic: string): Promise<{ ok: boo
 
 ✅ الاتصال بـ ntfy.sh يعمل بشكل صحيح.
 ${formatDateTime(new Date(), "ar-DZ")}`;
-    const result = await postToNtfy(cleanTopic, "قفطان غرناطة — اختبار ntfy", message, {}, 6_000);
+    const result = await postToNtfy(cleanTopic, "Caftan Gharnata - ntfy test", message, {}, 6_000);
 
     if (result.ok) return { ok: true };
     return { ok: false, error: `ntfy: ${result.description || "Unknown error"}` };
@@ -310,7 +323,7 @@ ${itemsText}
     // function can report overall success even if Telegram is disabled.
     let ntfyDelivered = false;
     if (settings.ntfy_enabled !== false && ntfyTopic) {
-      const ntfyTitle = `🛒 طلب جديد #${data.orderId} — قفطان غرناطة`;
+      const ntfyTitle = `New order #${data.orderId} - Caftan Gharnata`;
       const ntfyMessage = `🛒 طلب #${data.orderId} — ${data.customerName} — ${data.totalPrice.toLocaleString("fr-FR")} د.ج
 🚚 ${shippingTypeText}
 📍 ${data.commune} / ${data.wilayaName}
