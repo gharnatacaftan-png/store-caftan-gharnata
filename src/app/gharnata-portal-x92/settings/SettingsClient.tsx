@@ -50,7 +50,7 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
   const [telegramEnabled, setTelegramEnabled] = useState(initialSettings.telegram_enabled ?? true);
   const [telegramChatId, setTelegramChatId] = useState(initialSettings.telegram_chat_id ?? "");
   const [ntfyEnabled, setNtfyEnabled] = useState(initialSettings.ntfy_enabled ?? false);
-  const [ntfyTopic, setNtfyTopic] = useState(initialSettings.ntfy_topic ?? "");
+  const [ntfyTopics, setNtfyTopics] = useState(initialSettings.ntfy_topic ?? "");
   const [testingNtfy, setTestingNtfy] = useState(false);
   const [ntfyResult, setNtfyResult] = useState<{ ok?: boolean; error?: string } | null>(null);
   const [testingTelegram, setTestingTelegram] = useState(false);
@@ -130,7 +130,7 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
           "Content-Type": "application/json",
           "x-csrf-token": csrfToken,
         },
-        body: JSON.stringify({ topic: ntfyTopic }),
+         body: JSON.stringify({ topic: ntfyTopics }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -198,7 +198,7 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
         address4: addresses[3].text, address4_url: addresses[3].url, address4_enabled: addresses[3].enabled,
         telegram_enabled: telegramEnabled,
         telegram_chat_id: telegramChatId,
-        ntfy_topic: ntfyTopic,
+         ntfy_topic: ntfyTopics,
         ntfy_enabled: ntfyEnabled,
       }),
     });
@@ -462,16 +462,17 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
 
           <div className="space-y-4">
             <div>
-              <label className="text-gray-400 text-xs mb-1 block">ntfy.sh Topic (معرف القناة)</label>
-              <input value={ntfyTopic} onChange={(e) => setNtfyTopic(e.target.value)} disabled={!ntfyEnabled}
-                className={`w-full bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 disabled:opacity-40 ${ntfyEnabled ? "" : "pointer-events-none"}`}
-                dir="ltr" placeholder="ex: caftan-commandes" />
+              <label className="text-gray-400 text-xs mb-1 block">ntfy.sh Topics — un par ligne ou séparés par ; (معرّفات القنوات)</label>
+              <textarea value={ntfyTopics} onChange={(e) => setNtfyTopics(e.target.value)} disabled={!ntfyEnabled}
+                rows={3}
+                className={`w-full bg-[#1a1a24] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 disabled:opacity-40 font-mono ${ntfyEnabled ? "" : "pointer-events-none"}`}
+                dir="ltr" placeholder={"ex: mohamed\ncaftan-commandes"} />
               <p className="text-gray-500 text-[11px] mt-1">
                 {lang === "ar"
-                  ? "أرسل الإشعارات إلى هذا الموضوع على ntfy.sh — افتح https://ntfy.sh/<topic> لاستقبالها."
+                  ? "أرسل الإشعارات إلى كل هذه القنوات على ntfy.sh — افتح https://ntfy.sh/<topic> لاستقبالها. كل قناة تتلقى الرسالة الكاملة."
                   : lang === "fr"
-                  ? "Envoie les notifications vers ce topic ntfy.sh — ouvre https://ntfy.sh/<topic> pour les recevoir."
-                  : "Send notifications to this ntfy.sh topic — open https://ntfy.sh/<topic> to receive them."}
+                  ? "Envoie les notifications vers tous ces topics ntfy.sh — ouvre https://ntfy.sh/<topic> pour les recevoir. Chaque canal reçoit le message complet."
+                  : "Send notifications to all these ntfy.sh topics — open https://ntfy.sh/<topic> to receive them. Each channel gets the full message."}
               </p>
             </div>
 
@@ -486,7 +487,7 @@ export default function SettingsClient({ initialSettings }: { initialSettings: S
               </div>
             )}
 
-            <button type="button" onClick={handleTestNtfy} disabled={!ntfyEnabled || testingNtfy || !ntfyTopic}
+             <button type="button" onClick={handleTestNtfy} disabled={!ntfyEnabled || testingNtfy || !ntfyTopics.trim()}
               className="w-full border border-white/10 rounded-xl py-2.5 text-xs text-white bg-white/5 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
               <Send className="w-3.5 h-3.5 text-[#D4AF37]" />
               {testingNtfy ? (lang === "ar" ? "جاري الإرسال..." : "Envoi...") : (lang === "ar" ? "إرسال اختبار ntfy" : lang === "fr" ? "Envoyer un test ntfy" : "Send ntfy test")}

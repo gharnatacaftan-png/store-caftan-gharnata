@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { rejectUnsafeAdminRequest } from "@/lib/admin-api";
-import { sendTestNtfyNotification } from "@/lib/notifications";
+import { sendTestNtfyNotification, cleanNtfyTopics } from "@/lib/notifications";
 import { d1Execute } from "@/lib/db";
 import { okResponse, errorResponse } from "@/lib/security";
 
@@ -15,20 +15,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const topic = String(body.topic || "").trim().replace(/\s+/g, "");
+    // Normalize to a single ";" separated string so multiple channels persist
+    // identically and sendTestNtfyNotification fans out to each of them.
+    const topics = cleanNtfyTopics(String(body.topic ?? ""));
 
-    // Persist the validated topic so order notifications (which read
-    // `settings.ntfy_topic`) actually reach this channel.
+    // Persist the validated topics so order notifications (which read
+    // `settings.ntfy_topic`) actually reach these channels.
     try {
       const up = await d1Execute(
         `UPDATE site_settings SET ntfy_topic = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'store'`,
-        [topic]
+        [topics]
       );
       if (up.changes === 0) {
         await d1Execute(
           `INSERT OR IGNORE INTO site_settings (id, phone1, phone2, whatsapp, instagram, ntfy_topic, updated_at)
            VALUES ('store', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-          ["0561234567", "0671234567", "213561234567", "https://instagram.com/caftan_granada", topic]
+          ["0561234567", "0671234567", "213561234567", "https://instagram.com/caftan_granada", topics]
         );
       }
     } catch (persistErr) {
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
       console.warn("[test-ntfy] could not persist ntfy_topic to D1:", persistErr);
     }
 
-    const result = await sendTestNtfyNotification(topic);
+    const result = await sendTestNtfyNotification(topics);
     if (result.ok) return okResponse({ ok: true });
 
     return errorResponse(result.error || "Erreur ntfy", 400);

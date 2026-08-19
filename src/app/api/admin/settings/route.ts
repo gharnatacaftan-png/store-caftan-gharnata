@@ -1,7 +1,7 @@
 ﻿import { NextRequest } from "next/server";
 import { getSiteSettings, updateSiteSettings } from "@/lib/settings";
 import { isAdminRequest, rejectUnsafeAdminRequest } from "@/lib/admin-api";
-import { parseTelegramChatIds } from "@/lib/notifications";
+import { parseTelegramChatIds, cleanNtfyTopics } from "@/lib/notifications";
 import { okResponse, errorResponse } from "@/lib/security";
 
 export const runtime = "nodejs";
@@ -12,11 +12,6 @@ function cleanTelegramChatId(value: unknown): string {
   // Plusieurs chat id séparés par des sauts de ligne, des points-virgules ou
   // des virgules → normalisés en une liste point-virgule séparée.
   return parseTelegramChatIds(String(value || "")).join(";");
-}
-
-function cleanNtfyTopic(value: unknown): string {
-  // ntfy.sh topic: on garde une seule valeur, espaces éliminés.
-  return String(value || "").trim().replace(/\s+/g, "");
 }
 
 export async function GET(req: NextRequest) {
@@ -87,7 +82,7 @@ export async function POST(req: NextRequest) {
       "",
     telegram_chat_id: cleanTelegramChatId(body.telegram_chat_id),
     telegram_enabled: body.telegram_enabled === true,
-    ntfy_topic: cleanNtfyTopic(body.ntfy_topic),
+     ntfy_topic: cleanNtfyTopics(body.ntfy_topic ?? ""),
     ntfy_enabled: body.ntfy_enabled === true,
   });
 

@@ -36,12 +36,37 @@ const NTFY_DEFAULT_TAGS = "shopping_cart,receipt_receiver";
 // HTTP HEADERS (Title, Tags, Click, ...). The message BODY may stay UTF-8
 // (Arabic, emoji, ...), but every header value MUST be pure ASCII. This strips
 // anything non-ASCII so we never crash an order notification over a header.
+// ntfy.sh (and the Cloudflare edge in front of it) reject non-ASCII bytes in
+// HTTP HEADERS (Title, Tags, Click, ...). The message BODY may stay UTF-8
+// (Arabic, emoji, ...), but every header value MUST be pure ASCII. This strips
+// anything non-ASCII so we never crash an order notification over a header.
 function sanitizeNtfyHeader(value: string): string {
   return String(value ?? "")
     .split("")
     .filter((c) => c.charCodeAt(0) <= 127)
     .join("")
     .trim();
+}
+
+// A single ntfy_topic column stores ONE or SEVERAL topics separated by spaces,
+// commas, semicolons or newlines — mirroring the Telegram multi-chat input.
+// ntfy topics are single tokens (no spaces), so stripping internal whitespace
+// per token is safe. Empty/duplicate entries are dropped.
+export function parseNtfyTopics(value: unknown): string[] {
+  return Array.from(
+    new Set(
+      String(value ?? "")
+        .split(/[\s;,\n\r]+/)
+        .map((t) => t.trim().replace(/\s+/g, ""))
+        .filter(Boolean)
+    )
+  );
+}
+
+// Canonical stored form for ntfy_topic (";" separated). Reused by the API so
+// the DB and the client agree on the multi-topic encoding.
+export function cleanNtfyTopics(value: unknown): string {
+  return parseNtfyTopics(value).join(";");
 }
 
 // ntfy.sh is plain-text/Markdown, NOT HTML: it cannot render Telegram's HTML
@@ -210,21 +235,30 @@ function postToNtfy(
   });
 }
 
-export async function sendTestNtfyNotification(topic: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendTestNtfyNotification(topics: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const cleanTopic = topic.trim().replace(/\s+/g, "");
-    if (!cleanTopic) {
-      return { ok: false, error: "Veuillez saisir un Topic ntfy.sh." };
+    const list = parseNtfyTopics(topics);
+    if (list.length === 0) {
+      return { ok: false, error: "Veuillez saisir au moins un Topic ntfy.sh." };
     }
 
     const message = `🔔 رسالة اختبار - قفطان غرناطة
 
 ✅ الاتصال بـ ntfy.sh يعمل بشكل صحيح.
 ${formatDateTime(new Date(), "ar-DZ")}`;
-    const result = await postToNtfy(cleanTopic, "Caftan Gharnata - ntfy test", message, {}, 6_000);
 
-    if (result.ok) return { ok: true };
-    return { ok: false, error: `ntfy: ${result.description || "Unknown error"}` };
+    const outcomes: Array<{ topic: string; ok: boolean; description?: string }> = [];
+    for (const topic of list) {
+      const result = await postToNtfy(topic, "Caftan Gharnata - ntfy test", message, {}, 6_000);
+      outcomes.push({ topic, ok: result.ok, description: result.description });
+    }
+
+    const failed = outcomes.filter((o) => !o.ok);
+    if (failed.length === 0) return { ok: true };
+    return {
+      ok: false,
+      error: `ntfy: ${failed.map((f) => `${f.topic} (${f.description || "unknown"})`).join(", ")}`,
+    };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur de connexion ntfy";
     return { ok: false, error: message };
@@ -281,7 +315,11 @@ export async function sendTelegramNotification(data: OrderNotificationData): Pro
       process.env.TELEGRAM_CHAT_ID?.trim() ||
       ""
     );
-    const ntfyTopic = settings.ntfy_topic?.trim() || process.env.NTFY_TOPIC?.trim() || "";
+     const ntfyTopics = parseNtfyTopics(
+       settings.ntfy_topic?.trim() ||
+       process.env.NTFY_TOPIC?.trim() ||
+       ""
+     );
 
     const lang = data.lang === "fr" ? "الفرنسية" : data.lang === "en" ? "الإنجليزية" : "العربية";
     const shippingTypeText = data.shippingType === "HOME" ? "المنزل 🏠" : "مكتب البريد (Stop Desk) 🏢";
@@ -336,24 +374,22 @@ ${itemsText}
     // the order. Sent only when enabled + topic configured. Tracked so the
     // function can report overall success even if Telegram is disabled.
     let ntfyDelivered = false;
-    if (settings.ntfy_enabled !== false && ntfyTopic) {
+    if (settings.ntfy_enabled !== false && ntfyTopics.length > 0) {
       const ntfyTitle = `New order #${data.orderId} - Caftan Gharnata`;
       // EXACT same content as the Telegram message (Arabic, prices, every
       // product line, client info, bon link) — rendered as Markdown so ntfy
       // shows it like Telegram: blue clickable links, bold product names.
       const ntfyMessage = ntfyMarkdown(message);
-      ntfyDelivered = await postToNtfy(
-        ntfyTopic,
-        ntfyTitle,
-        ntfyMessage,
-        { clickUrl: docUrl },
-        NTFY_TIMEOUT_MS
-      )
-        .then((r) => r.ok)
-        .catch((e: unknown) => {
-          console.warn("[ntfy] notification send failed:", e instanceof Error ? e.message : e);
-          return false;
-        });
+      // Fan out to EVERY configured ntfy channel (multi-topic support).
+      for (const topic of ntfyTopics) {
+        const ok = await postToNtfy(topic, ntfyTitle, ntfyMessage, { clickUrl: docUrl }, NTFY_TIMEOUT_MS)
+          .then((r) => r.ok)
+          .catch((e: unknown) => {
+            console.warn(`[ntfy] send to channel "${topic}" failed:`, e instanceof Error ? e.message : e);
+            return false;
+          });
+        if (ok) ntfyDelivered = true;
+      }
     }
 
     // A single order can be delivered to several Telegram accounts at once: we
