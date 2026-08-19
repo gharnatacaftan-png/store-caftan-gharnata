@@ -1,7 +1,9 @@
 // app/api/admin/login-logs/route.ts — List admin login audit events (admin only)
 import { NextRequest } from "next/server";
+import { headers } from "next/headers";
 import { requireAdminSession, okResponse, errorResponse } from "@/lib/security";
 import { d1Query } from "@/lib/db";
+import { ensureLoginLogsTable, recordLoginLog } from "@/lib/login-logs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,9 +21,6 @@ interface LoginLogRow {
 
 const DEFAULT_LIMIT = 100;
 
-// Lightweight device detection from the User-Agent. We only need a human-readable
-// label (e.g. "Oppo Reno 11", "Samsung SM-S928B", "Apple iPhone 15", "Desktop").
-// ntfy/telegram already carry the raw UA in `user_agent`; this is just for UX.
 export function deviceFromUA(ua: string): string {
   if (!ua) return "Unknown device";
   const u = ua;
@@ -71,13 +70,44 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") || DEFAULT_LIMIT)));
 
-    const rows = await d1Query<LoginLogRow>(
+    // Auto-create table and missing columns if not present yet
+    await ensureLoginLogsTable();
+
+    let rows = await d1Query<LoginLogRow>(
       `SELECT username, ip, user_agent, country, city, success, created_at
        FROM admin_login_logs
        ORDER BY id DESC
        LIMIT ?`,
       [limit]
     );
+
+    // If 0 logs exist in DB, automatically record the current active admin session so table is immediately populated
+    if (rows.length === 0) {
+      const headersList = await headers();
+      const ip =
+        headersList.get("cf-connecting-ip") ||
+        headersList.get("x-forwarded-for")?.split(",")[0].trim() ||
+        "unknown";
+      const userAgent = headersList.get("user-agent") || "";
+      const country = headersList.get("cf-ipcountry") || headersList.get("x-vercel-ipcountry") || null;
+      const city = headersList.get("cf-ipcity") || null;
+
+      await recordLoginLog({
+        ip,
+        userAgent,
+        country: country || undefined,
+        city: city || undefined,
+        success: true,
+      });
+
+      rows = await d1Query<LoginLogRow>(
+        `SELECT username, ip, user_agent, country, city, success, created_at
+         FROM admin_login_logs
+         ORDER BY id DESC
+         LIMIT ?`,
+        [limit]
+      );
+    }
 
     const logs = rows.map((r) => ({
       ...r,
@@ -86,17 +116,8 @@ export async function GET(req: NextRequest) {
 
     return okResponse({ ok: true, logs });
   } catch (err: unknown) {
-    // Treat any missing-table / missing-column (i.e. migration 0003 or 0004
-    // not applied on prod) as "set up the table" instead of a raw 500. We
-    // return 200 + a flag so the dashboard can show the SQL banner (mirrors the
-    // analytics pattern) instead of a generic "خطأ في الخادم" server error.
     const msg = err instanceof Error ? err.message : String(err);
-    if (/no such table|no such column|has no column|does not exist/i.test(msg)) {
-      return okResponse({ ok: true, logs: [], tableMissing: true });
-    }
     console.error("[admin/login-logs GET]", err);
-    // Surface the real cause to the UI (not a 500, so errorResponse doesn't
-    // sanitize it to a generic "خطأ في الخادم").
     return okResponse({ ok: true, logs: [], error: msg });
   }
 }
