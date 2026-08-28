@@ -9,6 +9,12 @@ import "server-only";
 
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import dns from "node:dns";
+
+// Force Node.js on Windows / Localhost to resolve IPv4 first (prevents local ISP IPv6 DNS timeouts)
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {}
 
 export function getR2Client() {
   return new S3Client({
