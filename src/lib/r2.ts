@@ -1,4 +1,4 @@
-﻿import "server-only";
+import "server-only";
 // lib/r2.ts
 // Cloudflare R2 via S3-compatible API (AWS SDK v3)
 //
@@ -10,7 +10,7 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-function getR2Client() {
+export function getR2Client() {
   return new S3Client({
     region: "auto",
     endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID!}.r2.cloudflarestorage.com`,
@@ -18,6 +18,7 @@ function getR2Client() {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
     },
+    forcePathStyle: true,
   });
 }
 

@@ -1,19 +1,9 @@
 // app/api/media/[...key]/route.ts — Media & Video Streaming Proxy for Cloudflare R2 Assets
 import { NextRequest, NextResponse } from "next/server";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getR2Client } from "@/lib/r2";
 
 export const runtime = "nodejs";
-
-function getR2Client() {
-  return new S3Client({
-    region: "auto",
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID!}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-  });
-}
 
 const BUCKET = process.env.R2_BUCKET_NAME || "caftan-gharnata-media";
 
