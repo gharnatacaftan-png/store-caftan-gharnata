@@ -469,79 +469,56 @@ const body = new FormData();
       );
 
       try {
-        let uploadedSuccessfully = false;
-
         if (isVideo) {
-          // 1. Try presigned PUT URL direct to R2 (bypasses Next.js body limits & timeouts)
-          setUploadStatusText(`${tx.admin("preparing_video")} (${i + 1}/${fileList.length})`);
-          try {
-const presignRes = await fetch("/api/admin/uploads/presign", {
-              method: "POST",
-              headers: await csrfHeaders({ "Content-Type": "application/json" }),
-              body: JSON.stringify({
-                fileType: file.type || "video/mp4",
-                fileSize: file.size,
-                fileName: file.name,
-              }),
-            });
-            const presignData = await presignRes.json();
+          // Videos: send raw body directly to /api/admin/uploads/video
+          // (Presigned R2 URLs point to the private S3 endpoint which is not
+          //  DNS-resolvable from browsers. This server-side route is reliable.)
+          setUploadStatusText(`${tx.admin("uploading_video_r2")} (${i + 1}/${fileList.length})`);
 
-            if (presignData.ok && presignData.presignedUrl) {
-              setUploadStatusText(`${tx.admin("uploading_video_r2")} (${i + 1}/${fileList.length})`);
-              const putRes = await fetch(presignData.presignedUrl, {
-                method: "PUT",
-                headers: { "Content-Type": file.type || "video/mp4" },
-                body: file,
-              });
+          const videoType = file.type || "video/mp4";
+          const videoRes = await fetch("/api/admin/uploads/video", {
+            method: "POST",
+            headers: await csrfHeaders({
+              "Content-Type": videoType,
+              "x-file-type": videoType,
+              "x-file-size": String(file.size),
+              "x-file-name": encodeURIComponent(file.name),
+            }),
+            body: file,
+          });
 
-              if (putRes.ok) {
-                newVideos.push(presignData.publicUrl);
-                setUploadStatusText(`${tx.admin("video_uploaded")} (${i + 1}/${fileList.length})`);
-                uploadedSuccessfully = true;
-              }
-            }
-          } catch (presignErr) {
-            console.warn("[presign upload failed, falling back to /api/admin/uploads]", presignErr);
+          const videoData = await videoRes.json();
+          if (videoData.ok && videoData.files?.[0]) {
+            newVideos.push(videoData.files[0].url);
+            setUploadStatusText(`${tx.admin("video_uploaded")} (${i + 1}/${fileList.length})`);
+          } else {
+            setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", videoData.error || tx.admin("upload_failed")));
+            hasError = true;
           }
-        }
-
-        if (uploadedSuccessfully) {
-          continue;
-        }
-
-        // 2. Fallback or Images: FormData → /api/admin/uploads
-        const fd = new FormData();
-        if (isVideo) {
-          setUploadStatusText(`${tx.admin("video_server_upload")} (${i + 1}/${fileList.length})`);
-          fd.append("files", file);
         } else {
+          // Images: compress then FormData -> /api/admin/uploads
           setUploadStatusText(tx.admin("compressing_image"));
           const compressed = await compressImageIfNeeded(file);
           setUploadStatusText(tx.admin("uploading_image"));
+          const fd = new FormData();
           fd.append("files", compressed);
-        }
 
-        const res = await fetch("/api/admin/uploads", {
-          method: "POST",
-          headers: await csrfHeaders(),
-          body: fd,
-        });
-        const data = await res.json();
+          const res = await fetch("/api/admin/uploads", {
+            method: "POST",
+            headers: await csrfHeaders(),
+            body: fd,
+          });
+          const data = await res.json();
 
-        if (data.ok && data.files?.[0]) {
-          const url = data.files[0].url;
-          if (isVideo) {
-            newVideos.push(url);
-            setUploadStatusText(`${tx.admin("video_uploaded")} (${i + 1}/${fileList.length})`);
-          } else {
-            newImages.push(url);
+          if (data.ok && data.files?.[0]) {
+            newImages.push(data.files[0].url);
             setUploadStatusText(`${tx.admin("image_uploaded")} (${i + 1}/${fileList.length})`);
+          } else {
+            setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", data.error || tx.admin("upload_failed")));
+            hasError = true;
           }
-        } else {
-          setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", data.error || tx.admin("upload_failed")));
-          hasError = true;
         }
-    } catch (e: unknown) {
+      } catch (e: unknown) {
         console.error("[gallery upload] error:", e);
         setUploadStatusText(tx.admin("upload_error_occurred"));
         hasError = true;
