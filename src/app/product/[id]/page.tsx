@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ShieldCheck, Truck, Home, Building2, Receipt, X, ZoomIn, Loader2, ArrowLeft, ShoppingBag } from "lucide-react";
+import { Check, ShieldCheck, Truck, Home, Building2, Receipt, X, ZoomIn, Loader2, ArrowLeft, ShoppingBag, Video } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { WILAYAS } from "@/lib/wilayas";
 import { Product, getLocalizedField } from "@/lib/types";
@@ -11,6 +11,7 @@ import { useLang } from "@/hooks/useLang";
 import { useCart } from "@/hooks/useCart";
 import { t } from "@/lib/i18n";
 import { fetchShippingRates } from "@/lib/shipping-rates-client";
+import { parseVideoEmbedUrl } from "@/lib/video-embed";
 
 export default function ProductDetail({ params }: { params: Promise<{ id: string }> }) {
   const { lang } = useLang();
@@ -302,19 +303,34 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               onMouseMove={handleMouseMove}>
               
               {isVideoActive ? (
-                <video
-                  src={resolveMediaUrl(activeMedia)}
-                  className="w-full h-full object-contain pointer-events-none"
-                  poster={resolveMediaUrl(product?.primary_image || thumbnailImages[0] || "")}
-                  autoPlay muted loop playsInline preload="metadata"
-                />
+                (() => {
+                  const embed = parseVideoEmbedUrl(activeMedia);
+                  if (embed.type !== "direct" && embed.embedUrl) {
+                    return (
+                      <iframe
+                        src={embed.embedUrl}
+                        className="w-full h-full border-0 rounded-xl"
+                        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    );
+                  }
+                  return (
+                    <video
+                      src={resolveMediaUrl(activeMedia)}
+                      className="w-full h-full object-contain pointer-events-none"
+                      poster={resolveMediaUrl(product?.primary_image || thumbnailImages[0] || "")}
+                      autoPlay muted loop playsInline preload="metadata"
+                    />
+                  );
+                })()
               ) : (
                 <Image src={resolveMediaUrl(activeMedia)} alt={product.name || "قفطان غرناطة"} fill unoptimized priority fetchPriority="high" loading="eager"
                   className={`object-cover transition-transform ${isHovering ? "scale-[2] duration-0" : "scale-100 duration-500"}`}
                   style={{ transformOrigin: isHovering ? `${mousePos.x}% ${mousePos.y}%` : "center center" }} />
               )}
               
-              {!isHovering && (
+              {!isHovering && !isVideoActive && (
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
                   <div className="bg-white/80 backdrop-blur p-3 rounded-full shadow-xl">
                     <ZoomIn className="w-6 h-6 text-primary" />
@@ -327,17 +343,27 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.5, delay: 0.4 }}
                 className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 w-full justify-center">
                 {allMedia.map((media, index) => {
-                  const isVid = media.match(/\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i) || thumbnailVideos.includes(media);
+                  const embedThumb = parseVideoEmbedUrl(media);
+                  const isVid = media.match(/\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i) || thumbnailVideos.includes(media) || embedThumb.type !== "direct";
                   const mediaUrl = resolveMediaUrl(media);
                   return (
                     <button key={index} onClick={() => setMainImage(media)}
                       className={`relative w-16 h-20 sm:w-24 sm:h-32 rounded-lg overflow-hidden border-2 transition-all shrink-0 bg-black ${activeMedia === media ? "border-[#D4AF37] shadow-md scale-105" : "border-transparent opacity-70 hover:opacity-100"}`}>
                       {isVid ? (
-                        <video src={`${mediaUrl}#t=0.1`} className="w-full h-full object-cover pointer-events-none" muted playsInline preload="metadata" />
+                        embedThumb.type !== "direct" ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-black/90 text-white p-1 text-center">
+                            <span className="text-[10px] font-extrabold uppercase text-[#D4AF37]">
+                              {embedThumb.type === "instagram" ? "Insta" : embedThumb.type === "tiktok" ? "TikTok" : "YouTube"}
+                            </span>
+                            <Video className="w-4 h-4 text-white mt-1" />
+                          </div>
+                        ) : (
+                          <video src={`${mediaUrl}#t=0.1`} className="w-full h-full object-cover pointer-events-none" muted playsInline preload="metadata" />
+                        )
                       ) : (
                         <Image src={mediaUrl} alt={`Thumbnail ${index}`} fill unoptimized loading="lazy" decoding="async" className="object-cover" />
                       )}
-                      {isVid && (
+                      {isVid && embedThumb.type === "direct" && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                           <div className="w-6 h-6 rounded-full bg-white/80 flex items-center justify-center">
                             <div className="w-0 h-0 border-t-4 border-t-transparent border-l-[6px] border-l-black border-b-4 border-b-transparent ml-0.5" />

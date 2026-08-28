@@ -47,7 +47,11 @@ export function r2Url(key: string): string {
 // ---------------------------------------------------------------------------
 export function r2VideoUrl(r2UrlOrKey: string): string {
   if (!r2UrlOrKey) return "";
-  let key = r2UrlOrKey;
+  let key = r2UrlOrKey.trim();
+  // Pass external URLs (Instagram, TikTok, YouTube, external CDNs) directly through
+  if ((key.startsWith("http://") || key.startsWith("https://")) && !key.startsWith(`${R2_PUBLIC_BASE}/`)) {
+    return key;
+  }
   if (key.startsWith(`${R2_PUBLIC_BASE}/`)) {
     key = key.slice(`${R2_PUBLIC_BASE}/`.length);
   } else if (key.startsWith("/api/media/")) {

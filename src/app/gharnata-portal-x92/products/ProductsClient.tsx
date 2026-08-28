@@ -10,6 +10,7 @@ import RefreshButton from "@/components/admin/RefreshButton";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 import { csrfHeaders } from "@/lib/client-csrf";
+import { parseVideoEmbedUrl } from "@/lib/video-embed";
 
 export interface D1ProductItem {
   id: number | string;
@@ -320,6 +321,17 @@ export default function ProductsClient({ initialProducts }: { initialProducts: R
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [uploadStatusText, setUploadStatusText] = useState("");
   const [urlInput, setUrlInput] = useState("");
+  const [videoLinkInput, setVideoLinkInput] = useState("");
+
+  const handleAddVideoLink = () => {
+    const url = videoLinkInput.trim();
+    if (!url) return;
+    setForm(f => ({
+      ...f,
+      videos: [...(f.videos || []), url],
+    }));
+    setVideoLinkInput("");
+  };
 
   const filtered = products.filter(p => {
     const title = p.title || p.name || "";
@@ -1293,8 +1305,35 @@ onError={(e) => {
                       />
                     </label>
 
-                    {/* Manual URL Input */}
-                    <div className="pt-2">
+                    {/* Option 2 (Secours): Manual Video Link Input (Instagram / TikTok / YouTube / MP4) */}
+                    <div className="bg-[#1a1a24] p-4 rounded-xl border border-[#D4AF37]/30 space-y-3 pt-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[#D4AF37] text-xs font-bold flex items-center gap-1.5">
+                          <span>🔗</span>
+                          <span>Option de secours : Ajouter une vidéo par lien (Instagram / TikTok / YouTube)</span>
+                        </label>
+                        <span className="text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full border border-[#D4AF37]/30 font-semibold">Économise R2</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={videoLinkInput}
+                          onChange={e => setVideoLinkInput(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), handleAddVideoLink())}
+                          className="flex-1 bg-[#101018] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 dir-ltr"
+                          placeholder="Ex: https://www.instagram.com/reel/... ou https://www.tiktok.com/@..."
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddVideoLink}
+                          className="bg-[#D4AF37] text-black hover:bg-[#c29c2d] px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shadow-md shadow-[#D4AF37]/20"
+                        >
+                          + Ajouter le lien
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Manual Image URL Input */}
+                    <div className="pt-1">
                       <label className="text-gray-400 text-xs mb-1.5 block">{tx.admin("manual_url_label")}</label>
                       <div className="flex gap-2">
                         <input
@@ -1395,17 +1434,31 @@ onError={(e) => {
                           {form.videos.map((vid, i) => {
                             const linkedColorId = getLinkedColorId(form.color_media_map, vid);
                             const linkedColor = form.colors.find(c => c.id === linkedColorId);
+                            const embed = parseVideoEmbedUrl(vid);
 
                             return (
                               <div key={`vid-${i}`} className="flex flex-col bg-[#111118] border border-[#D4AF37]/30 rounded-xl overflow-hidden p-2 gap-2">
                                 <div className="relative h-28 rounded-lg overflow-hidden bg-black group flex items-center justify-center">
-                                  <video src={getVideoProxyUrl(vid)} className="w-full h-full object-cover pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity" muted playsInline preload="metadata" />
-                                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <div className="w-6 h-6 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                                      <Video className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                  {embed.type !== "direct" ? (
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-black/95 text-white p-2 text-center">
+                                      <span className="text-[11px] font-black uppercase text-[#D4AF37]">
+                                        {embed.type === "instagram" ? "📸 Instagram Reel" : embed.type === "tiktok" ? "🎵 TikTok Video" : "▶️ YouTube"}
+                                      </span>
+                                      <span className="text-[9px] text-gray-400 truncate max-w-[180px] mt-1 font-mono dir-ltr">{vid}</span>
                                     </div>
-                                  </div>
-                                  <span className="absolute top-1 right-1 bg-[#D4AF37] text-black text-[9px] font-bold px-1.5 py-0.5 rounded shadow">{tx.admin("video_badge")}</span>
+                                  ) : (
+                                    <>
+                                      <video src={getVideoProxyUrl(vid)} className="w-full h-full object-cover pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity" muted playsInline preload="metadata" />
+                                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        <div className="w-6 h-6 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                                          <Video className="w-3.5 h-3.5 text-[#D4AF37]" />
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                  <span className="absolute top-1 right-1 bg-[#D4AF37] text-black text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                                    {embed.type === "instagram" ? "Insta" : embed.type === "tiktok" ? "TikTok" : embed.type === "youtube" ? "YouTube" : tx.admin("video_badge")}
+                                  </span>
                                   {linkedColor && (
                                     <span className="absolute top-1 left-1 bg-black/80 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 shadow" style={{ borderColor: linkedColor.value }}>
                                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: linkedColor.value }} />
