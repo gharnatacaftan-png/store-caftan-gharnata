@@ -1305,12 +1305,12 @@ onError={(e) => {
                       />
                     </label>
 
-                    {/* Option 2 (Secours): Manual Video Link Input (Instagram / TikTok / YouTube / MP4) */}
+                    {/* Option 2 (Secours): Manual Video Link Input (Instagram / TikTok / YouTube / MP4 Direct) */}
                     <div className="bg-[#1a1a24] p-4 rounded-xl border border-[#D4AF37]/30 space-y-3 pt-3">
                       <div className="flex items-center justify-between">
                         <label className="text-[#D4AF37] text-xs font-bold flex items-center gap-1.5">
                           <span>🔗</span>
-                          <span>Option de secours : Ajouter une vidéo par lien (Instagram / TikTok / YouTube)</span>
+                          <span>Option de secours : Ajouter une vidéo par lien (Instagram / TikTok / YouTube / MP4 Direct)</span>
                         </label>
                         <span className="text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full border border-[#D4AF37]/30 font-semibold">Économise R2</span>
                       </div>
@@ -1320,7 +1320,7 @@ onError={(e) => {
                           onChange={e => setVideoLinkInput(e.target.value)}
                           onKeyDown={e => e.key === "Enter" && (e.preventDefault(), handleAddVideoLink())}
                           className="flex-1 bg-[#101018] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 dir-ltr"
-                          placeholder="Ex: https://www.instagram.com/reel/... ou https://www.tiktok.com/@..."
+                          placeholder="https://www.instagram.com/reel/... ou lien direct https://.../video.mp4"
                         />
                         <button
                           type="button"
@@ -1330,6 +1330,9 @@ onError={(e) => {
                           + Ajouter le lien
                         </button>
                       </div>
+                      <p className="text-[11px] text-gray-300 leading-relaxed bg-black/40 p-2.5 rounded-lg border border-white/5">
+                        💡 <b>Astuce d'affichage :</b> Pour les liens Instagram/TikTok, les entêtes de profil ("View profile") sont automatiquement masqués pour un affichage vidéo épuré. Vous pouvez aussi coller un lien direct vers un fichier vidéo <b>.mp4</b> pour une lecture vidéo 100% directe !
+                      </p>
                     </div>
 
                     {/* Manual Image URL Input */}

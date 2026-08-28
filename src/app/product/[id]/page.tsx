@@ -305,7 +305,31 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               {isVideoActive ? (
                 (() => {
                   const embed = parseVideoEmbedUrl(activeMedia);
-                  if (embed.type !== "direct" && embed.embedUrl) {
+                  if (embed.type === "instagram" && embed.embedUrl) {
+                    return (
+                      <div className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center rounded-xl">
+                        <iframe
+                          src={embed.embedUrl}
+                          className="absolute w-[114%] h-[142%] max-w-none -top-[14%] left-[-7%] border-0 pointer-events-auto"
+                          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                          allowFullScreen
+                        />
+                      </div>
+                    );
+                  }
+                  if (embed.type === "tiktok" && embed.embedUrl) {
+                    return (
+                      <div className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center rounded-xl">
+                        <iframe
+                          src={embed.embedUrl}
+                          className="absolute w-[108%] h-[126%] max-w-none -top-[10%] left-[-4%] border-0 pointer-events-auto"
+                          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                          allowFullScreen
+                        />
+                      </div>
+                    );
+                  }
+                  if (embed.type === "youtube" && embed.embedUrl) {
                     return (
                       <iframe
                         src={embed.embedUrl}
