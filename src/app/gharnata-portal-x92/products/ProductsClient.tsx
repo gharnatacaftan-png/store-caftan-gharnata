@@ -339,7 +339,8 @@ export default function ProductsClient({ initialProducts }: { initialProducts: R
   const [saving, setSaving] = useState(false);
   const [uploadingPrimary, setUploadingPrimary] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
-  const [uploadStatusText, setUploadStatusText] = useState("");
+  const [uploadStatusTextPrimary, setUploadStatusTextPrimary] = useState("");
+  const [uploadStatusTextGallery, setUploadStatusTextGallery] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [videoLinkInput, setVideoLinkInput] = useState("");
 
@@ -546,29 +547,32 @@ function getVideoProxyUrl(url: string): string {
   // ─── PRIMARY IMAGE UPLOAD ─────────────────────────────────────────────────
   async function handlePrimaryUpload(files: FileList | null) {
     if (!files || !files[0]) return;
-    const file = files[0];
+    const rawFile = files[0];
     setUploadingPrimary(true);
     try {
       const hdrs = await csrfHeaders();
-      setUploadStatusText(`⚡ Préparation de l'image…`);
+      setUploadStatusTextPrimary(`⚡ Compression de l'image…`);
+      
+      const file = await compressImageIfNeeded(rawFile);
+      setUploadStatusTextPrimary(`⚡ Préparation de l'image…`);
 
       const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
-        setUploadStatusText(
+        setUploadStatusTextPrimary(
           `⬆️ Image (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
         );
       });
 
       const newUrl = fixMediaUrl(url);
       setForm(f => ({ ...f, primary_image: newUrl }));
-      setUploadStatusText("✅ Photo uploadée!");
+      setUploadStatusTextPrimary("✅ Photo uploadée!");
       console.log("[primary upload] ✅", newUrl);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[primary upload] ❌", e);
-      setUploadStatusText(`❌ ${msg}`);
+      setUploadStatusTextPrimary(`❌ ${msg}`);
     } finally {
       setUploadingPrimary(false);
-      setTimeout(() => setUploadStatusText(""), 5000);
+      setTimeout(() => setUploadStatusTextPrimary(""), 5000);
     }
   }
 
@@ -587,17 +591,20 @@ function getVideoProxyUrl(url: string): string {
 
       // Upload files one by one (sequential = safe on slow mobile networks)
       for (let i = 0; i < fileList.length; i++) {
-        const file = fileList[i];
+        const rawFile = fileList[i];
         const isVideo =
-          file.type.startsWith("video/") ||
-          /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(file.name);
+          rawFile.type.startsWith("video/") ||
+          /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(rawFile.name);
         const kind = isVideo ? "Vidéo" : "Image";
 
         try {
-          setUploadStatusText(`⚡ Préparation ${kind} ${i + 1}/${fileList.length}…`);
+          if (!isVideo) setUploadStatusTextGallery(`⚡ Compression ${kind} ${i + 1}/${fileList.length}…`);
+          const file = isVideo ? rawFile : await compressImageIfNeeded(rawFile);
+          
+          setUploadStatusTextGallery(`⚡ Préparation ${kind} ${i + 1}/${fileList.length}…`);
 
           const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
-            setUploadStatusText(
+            setUploadStatusTextGallery(
               `⬆️ ${kind} ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
             );
           });
@@ -612,22 +619,22 @@ function getVideoProxyUrl(url: string): string {
           }
 
           successCount++;
-          setUploadStatusText(`✅ ${kind} ${i + 1}/${fileList.length} OK`);
+          setUploadStatusTextGallery(`✅ ${kind} ${i + 1}/${fileList.length} OK`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           console.error(`[gallery] ❌ ${kind} ${i + 1}:`, e);
           errors.push(`${kind} ${i + 1}: ${msg}`);
-          setUploadStatusText(`❌ ${kind} ${i + 1}: ${msg}`);
+          setUploadStatusTextGallery(`❌ ${kind} ${i + 1}: ${msg}`);
           // Always continue — don't abort the whole batch on a single failure
         }
       }
     } finally {
       setUploadingGallery(false);
       if (errors.length === 0 && successCount > 0) {
-        setUploadStatusText(`✅ ${successCount} fichier(s) uploadé(s) avec succès`);
-        setTimeout(() => setUploadStatusText(""), 4000);
+        setUploadStatusTextGallery(`✅ ${successCount} fichier(s) uploadé(s) avec succès`);
+        setTimeout(() => setUploadStatusTextGallery(""), 4000);
       } else if (errors.length > 0) {
-        setUploadStatusText(
+        setUploadStatusTextGallery(
           `⚠️ ${successCount} OK — ${errors.length} erreur(s): ${errors[0]}`
         );
       }
@@ -1335,7 +1342,7 @@ const res = await fetch("/api/admin/products", {
                         {uploadingPrimary ? (
                           <div className="flex flex-col items-center gap-2 text-[#D4AF37]">
                             <Loader2 className="w-7 h-7 animate-spin" />
-                            <span className="text-sm font-semibold">{uploadStatusText || tx.admin("upload_status_compressing")}</span>
+                            <span className="text-sm font-semibold text-center">{uploadStatusTextPrimary || tx.admin("upload_status_compressing")}</span>
                           </div>
                         ) : (
                           <>
@@ -1369,7 +1376,7 @@ const res = await fetch("/api/admin/products", {
                       {uploadingGallery ? (
                         <div className="flex flex-col items-center gap-2 text-[#D4AF37]">
                           <Loader2 className="w-7 h-7 animate-spin" />
-                          <span className="text-sm font-semibold">{uploadStatusText || tx.admin("upload_status_uploading")}</span>
+                          <span className="text-sm font-semibold text-center">{uploadStatusTextGallery || tx.admin("upload_status_uploading")}</span>
                         </div>
                       ) : (
                         <>
