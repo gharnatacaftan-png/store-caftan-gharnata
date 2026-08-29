@@ -50,15 +50,21 @@ const R2_PUBLIC_BASE = (process.env.R2_PUBLIC_URL || "https://pub-60b4679aa7b447
 
 function repairUrl(url: string): string {
   if (!url) return "";
-  // Already a full URL (Cloudflare R2 or any https URL) — use directly
-  if (url.startsWith("https://") || url.startsWith("http://")) return url;
-  // Legacy proxy path stored in DB — rewrite to direct R2 URL
-  if (url.startsWith("/api/media/")) {
-    const key = url.slice("/api/media/".length);
-    return `${R2_PUBLIC_BASE}/${key}`;
+  let clean = url.trim();
+
+  if (clean.startsWith("/api/media/")) return clean;
+
+  if (clean.includes("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")) {
+    clean = clean.split("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")[1];
+  } else if (clean.includes(".r2.dev/")) {
+    const idx = clean.indexOf(".r2.dev/");
+    clean = clean.slice(idx + 8);
   }
-  // Relative path (e.g. "uploads/...") — prepend R2 base
-  return `${R2_PUBLIC_BASE}/${url}`;
+
+  // External URLs (Instagram, TikTok, YouTube, non-R2 CDNs) stay as-is
+  if (clean.startsWith("http://") || clean.startsWith("https://")) return clean;
+
+  return `/api/media/${clean.replace(/^\/+/, "")}`;
 }
 
 // Helper: parse a DBProduct row from raw SQL result

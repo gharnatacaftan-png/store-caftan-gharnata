@@ -90,10 +90,41 @@ const R2_BASE = "https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev";
 
 function fixMediaUrl(url: string): string {
   if (!url) return "";
-  const clean = url.trim();
-  if (clean.startsWith("https://") || clean.startsWith("http://")) return clean;
-  if (clean.startsWith("/api/media/")) return `${R2_BASE}/${clean.slice("/api/media/".length)}`;
-  return `${R2_BASE}/${clean.replace(/^\/+/, "")}`;
+  let clean = url.trim();
+  if (clean.startsWith("blob:")) return clean;
+  if (clean.startsWith("/api/media/")) return clean;
+
+  // Extract key if it's an R2 URL (r2.dev or cloudflarestorage.com)
+  if (clean.includes("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")) {
+    clean = clean.split("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")[1];
+  } else if (clean.includes(".r2.dev/")) {
+    const idx = clean.indexOf(".r2.dev/");
+    clean = clean.slice(idx + 8);
+  } else if (clean.includes("cloudflarestorage.com/")) {
+    const parts = clean.split("/");
+    const uploadsIdx = parts.indexOf("uploads");
+    if (uploadsIdx !== -1) {
+      clean = parts.slice(uploadsIdx).join("/");
+    }
+  }
+
+  // External social links (Instagram, TikTok, YouTube) stay direct
+  if (
+    clean.includes("instagram.com") ||
+    clean.includes("tiktok.com") ||
+    clean.includes("youtube.com") ||
+    clean.includes("youtu.be")
+  ) {
+    return clean;
+  }
+
+  // If it's an external HTTP URL not matching our R2 bucket, keep as is
+  if ((clean.startsWith("http://") || clean.startsWith("https://")) && !clean.includes("r2.dev") && !clean.includes("cloudflarestorage.com")) {
+    return clean;
+  }
+
+  // Route everything else through /api/media/ (Vercel proxy = works on Djezzy 100%)
+  return `/api/media/${clean.replace(/^\/+/, "")}`;
 }
 
 function uniqMedia(urls: string[]): string[] {
