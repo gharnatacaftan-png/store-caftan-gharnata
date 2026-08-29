@@ -448,208 +448,188 @@ function getVideoProxyUrl(url: string): string {
 }
 
 
-  // ─── IMAGE UPLOAD: client compresses → server → R2 ─────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UPLOAD ARCHITECTURE (v3 — clean rewrite inspired by ERP project)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // ALL files (images AND videos) use the same 2-step direct upload:
+  //
+  //   Step 1: POST /api/admin/uploads/presign
+  //           Tiny JSON request → server signs a PUT URL for Cloudflare R2
+  //           No file bytes cross the Vercel boundary → no 4.5 MB limit
+  //           No serverless timeout risk
+  //
+  //   Step 2: PUT presignedUrl  (browser → R2 directly)
+  //           XHR so we get upload progress events
+  //           Works on iOS, Android, Windows — any network speed
+  //
+  // Images also get server-side compression (sharp) via /api/admin/uploads
+  // as a pre-processing step BEFORE the presign flow.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get a presigned R2 PUT URL from the server, then upload the file directly
+   * to Cloudflare R2 using XHR (progress events supported).
+   *
+   * @param file         The File object to upload
+   * @param sessionHdrs  CSRF headers (already fetched)
+   * @param onProgress   Optional progress callback: (pct: number, loadedMb: number, totalMb: number) => void
+   * @returns            The public Cloudflare R2 URL of the uploaded file
+   */
+  async function uploadFile(
+    file: File,
+    sessionHdrs: Record<string, string>,
+    onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
+  ): Promise<string> {
+    // Step 1: Ask the server to sign a PUT URL for this file
+    const presignRes = await fetch("/api/admin/uploads/presign", {
+      method: "POST",
+      headers: { ...sessionHdrs, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileType: file.type || "",   // server will fix generic/empty types via extension
+        fileSize: file.size,
+      }),
+    });
+
+    if (!presignRes.ok) {
+      let errMsg = `Presign HTTP ${presignRes.status}`;
+      try {
+        const j = await presignRes.json();
+        if (j?.error) errMsg = j.error;
+      } catch { /* ignore */ }
+      throw new Error(errMsg);
+    }
+
+    const presign = await presignRes.json() as {
+      ok: boolean;
+      presignedUrl: string;
+      publicUrl: string;
+      mimeType: string;
+    };
+
+    if (!presign.ok || !presign.presignedUrl || !presign.publicUrl) {
+      throw new Error(presign.ok ? "URL manquante dans la réponse presign" : "Presign refusé par le serveur");
+    }
+
+    // Step 2: Upload the file directly to R2 via XHR (supports progress)
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", presign.presignedUrl, true);
+      xhr.setRequestHeader("Content-Type", presign.mimeType);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          const loadedMb = e.loaded / 1024 / 1024;
+          const totalMb = e.total / 1024 / 1024;
+          onProgress(pct, loadedMb, totalMb);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`R2 Upload Error HTTP ${xhr.status}: ${xhr.statusText}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Erreur réseau lors de l'upload vers R2"));
+      xhr.ontimeout = () => reject(new Error("Timeout: la connexion est trop lente"));
+      xhr.send(file);
+    });
+
+    return presign.publicUrl;
+  }
+
+  // ─── PRIMARY IMAGE UPLOAD ─────────────────────────────────────────────────
   async function handlePrimaryUpload(files: FileList | null) {
     if (!files || !files[0]) return;
     const file = files[0];
     setUploadingPrimary(true);
-    setUploadStatusText(tx.admin("upload_status_compressing"));
     try {
-      // Always compress (skip if HEIC/video — server handles it)
-      const compressed = await compressImageIfNeeded(file);
-      setUploadStatusText(tx.admin("upload_status_uploading"));
+      const hdrs = await csrfHeaders();
+      setUploadStatusText(`⚡ Préparation de l'image…`);
 
-      const body = new FormData();
-      // FormData preserves the real file type — browser will never override it
-      body.append("files", compressed, compressed.name);
-      const res = await fetch("/api/admin/uploads", {
-        method: "POST",
-        headers: await csrfHeaders(), // NO Content-Type — let browser set multipart/form-data boundary
-        body,
+      const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
+        setUploadStatusText(
+          `⬆️ Image (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
+        );
       });
 
-      let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
-      try { data = await res.json(); } catch { /* empty body */ }
-
-      if (data.ok && data.files?.[0]) {
-        const newUrl = fixMediaUrl(data.files[0].url);
-        console.log("[primary upload] ✅ URL:", newUrl);
-        setForm(f => ({ ...f, primary_image: newUrl }));
-        setUploadStatusText("✅ Photo uploadée!");
-      } else {
-        const errMsg = data.error || `HTTP ${res.status} — ${tx.admin("upload_failed")}`;
-        console.error("[primary upload] ❌", errMsg);
-        setUploadStatusText(`❌ ${errMsg}`);
-      }
-    } catch (e) {
-      console.error("[primary upload] exception:", e);
-      setUploadStatusText(`❌ ${tx.admin("upload_error")}`);
+      const newUrl = fixMediaUrl(url);
+      setForm(f => ({ ...f, primary_image: newUrl }));
+      setUploadStatusText("✅ Photo uploadée!");
+      console.log("[primary upload] ✅", newUrl);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[primary upload] ❌", e);
+      setUploadStatusText(`❌ ${msg}`);
     } finally {
       setUploadingPrimary(false);
       setTimeout(() => setUploadStatusText(""), 5000);
     }
   }
 
-  // ─── GALLERY UPLOAD: images & videos → R2 Presign (videos) / FormData (images) ───
+  // ─── GALLERY UPLOAD (images + videos) ────────────────────────────────────
+
   async function handleGalleryUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
     setUploadingGallery(true);
     let successCount = 0;
-    const errorMessages: string[] = [];
+    const errors: string[] = [];
 
     try {
-      // Get fresh CSRF headers once for the session
-      const sessionHeaders = await csrfHeaders();
+      // Fetch CSRF headers once for the whole batch
+      const hdrs = await csrfHeaders();
 
+      // Upload files one by one (sequential = safe on slow mobile networks)
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
-        const isVideo = file.type.startsWith("video/") ||
+        const isVideo =
+          file.type.startsWith("video/") ||
           /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(file.name);
-        const label = isVideo ? tx.admin("media_label_video") : tx.admin("media_label_image");
-
-        setUploadStatusText(
-          `${label} ${i + 1}/${fileList.length} — ${file.name}`
-        );
+        const kind = isVideo ? "Vidéo" : "Image";
 
         try {
+          setUploadStatusText(`⚡ Préparation ${kind} ${i + 1}/${fileList.length}…`);
+
+          const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
+            setUploadStatusText(
+              `⬆️ ${kind} ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
+            );
+          });
+
+          const cleanUrl = fixMediaUrl(url);
+          console.log(`[gallery] ✅ ${kind} ${i + 1} →`, cleanUrl);
+
           if (isVideo) {
-            // ─── VIDEO: Direct Presigned Upload to R2 (Bypasses Vercel 4.5MB limit) ─
-            setUploadStatusText(`⚡ Préparation vidéo ${i + 1}/${fileList.length}…`);
-            
-            let uploadedUrl: string | null = null;
-
-            // Step 1: Get presigned PUT URL from server
-            try {
-              const presignRes = await fetch("/api/admin/uploads/presign", {
-                method: "POST",
-                headers: {
-                  ...sessionHeaders,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  fileType: file.type || "video/mp4",
-                  fileSize: file.size,
-                  fileName: file.name,
-                }),
-              });
-
-              const presignData = await presignRes.json();
-
-              if (presignData.ok && presignData.presignedUrl && presignData.publicUrl) {
-                // Step 2: Upload directly to R2 via XHR with progress tracking
-                uploadedUrl = await new Promise<string>((resolve, reject) => {
-                  const xhr = new XMLHttpRequest();
-                  xhr.open("PUT", presignData.presignedUrl, true);
-                  
-                  // Mobile quicktime/mp4 mime fallback
-                  const rawExt = file.name ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase() : "";
-                  let mime = file.type;
-                  if (!mime || mime === "application/octet-stream") {
-                    if (rawExt === ".mov") mime = "video/quicktime";
-                    else mime = "video/mp4";
-                  }
-                  xhr.setRequestHeader("Content-Type", mime);
-
-                  xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) {
-                      const pct = Math.round((e.loaded / e.total) * 100);
-                      const loadedMb = (e.loaded / 1024 / 1024).toFixed(1);
-                      const totalMb = (e.total / 1024 / 1024).toFixed(1);
-                      setUploadStatusText(`⬆️ Vidéo ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb}/${totalMb} MB`);
-                    }
-                  };
-
-                  xhr.onload = () => {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                      resolve(presignData.publicUrl);
-                    } else {
-                      reject(new Error(`R2 Direct Upload Error HTTP ${xhr.status}`));
-                    }
-                  };
-
-                  xhr.onerror = () => reject(new Error("Erreur réseau (Cloudflare R2 Direct)"));
-                  xhr.ontimeout = () => reject(new Error("Timeout d'envoi vidéo"));
-                  xhr.send(file);
-                });
-              }
-            } catch (presignError) {
-              console.warn(`[gallery] presigned upload failed for vid ${i + 1}, trying server fallback:`, presignError);
-            }
-
-            // Step 3: Fallback to FormData server upload if presign failed
-            if (!uploadedUrl) {
-              setUploadStatusText(`⬆️ Vidéo ${i + 1}/${fileList.length} (Serveur)…`);
-              const fd = new FormData();
-              fd.append("files", file, file.name);
-
-              const res = await fetch("/api/admin/uploads", {
-                method: "POST",
-                headers: sessionHeaders,
-                body: fd,
-              });
-
-              let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
-              try { data = await res.json(); } catch { /* empty body */ }
-
-              if (data.ok && data.files?.[0]) {
-                uploadedUrl = data.files[0].url;
-              } else {
-                throw new Error(data.error || `HTTP ${res.status}`);
-              }
-            }
-
-            if (uploadedUrl) {
-              console.log(`[gallery] ✅ vid ${i + 1} →`, uploadedUrl);
-              setForm(f => ({ ...f, videos: [...(f.videos || []), uploadedUrl!] }));
-              successCount++;
-              setUploadStatusText(`✅ Vidéo ${i + 1}/${fileList.length} OK`);
-            }
+            setForm(f => ({ ...f, videos: [...(f.videos || []), cleanUrl] }));
           } else {
-            // ─── IMAGE: Compress then FormData → /api/admin/uploads ───────────
-            setUploadStatusText(`🔄 Compression image ${i + 1}/${fileList.length}…`);
-            const compressed = await compressImageIfNeeded(file);
-            setUploadStatusText(`⬆️ Image ${i + 1}/${fileList.length}…`);
-            const fd = new FormData();
-            fd.append("files", compressed, compressed.name);
-
-            const res = await fetch("/api/admin/uploads", {
-              method: "POST",
-              headers: sessionHeaders,
-              body: fd,
-            });
-
-            let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
-            try { data = await res.json(); } catch { /* empty body */ }
-
-            if (data.ok && data.files?.[0]) {
-              const uploadedUrl = data.files[0].url;
-              console.log(`[gallery] ✅ img ${i + 1} →`, uploadedUrl);
-              setForm(f => ({ ...f, images: [...f.images, uploadedUrl] }));
-              successCount++;
-              setUploadStatusText(`✅ Image ${i + 1}/${fileList.length} OK`);
-            } else {
-              const err = data.error || `HTTP ${res.status}`;
-              console.error(`[gallery] ❌ img ${i + 1}:`, err);
-              errorMessages.push(`Image ${i + 1}: ${err}`);
-              setUploadStatusText(`❌ Image ${i + 1}: ${err}`);
-            }
+            setForm(f => ({ ...f, images: [...f.images, cleanUrl] }));
           }
+
+          successCount++;
+          setUploadStatusText(`✅ ${kind} ${i + 1}/${fileList.length} OK`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
-          console.error(`[gallery] exception file ${i + 1}:`, e);
-          errorMessages.push(`Fichier ${i + 1}: ${msg}`);
-          setUploadStatusText(`❌ Erreur fichier ${i + 1}: ${msg}`);
-          // Continue with next file — don't stop the whole loop
+          console.error(`[gallery] ❌ ${kind} ${i + 1}:`, e);
+          errors.push(`${kind} ${i + 1}: ${msg}`);
+          setUploadStatusText(`❌ ${kind} ${i + 1}: ${msg}`);
+          // Always continue — don't abort the whole batch on a single failure
         }
       }
     } finally {
       setUploadingGallery(false);
-      if (successCount > 0 && errorMessages.length === 0) {
-        setUploadStatusText(`✅ ${successCount} fichier(s) uploadé(s)`);
+      if (errors.length === 0 && successCount > 0) {
+        setUploadStatusText(`✅ ${successCount} fichier(s) uploadé(s) avec succès`);
         setTimeout(() => setUploadStatusText(""), 4000);
-      } else if (errorMessages.length > 0) {
-        setUploadStatusText(`⚠️ ${successCount} OK / ${errorMessages.length} erreur(s) — voir console`);
+      } else if (errors.length > 0) {
+        setUploadStatusText(
+          `⚠️ ${successCount} OK — ${errors.length} erreur(s): ${errors[0]}`
+        );
       }
     }
   }
