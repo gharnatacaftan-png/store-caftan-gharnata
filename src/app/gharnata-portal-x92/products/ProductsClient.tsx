@@ -1335,7 +1335,7 @@ const res = await fetch("/api/admin/products", {
                             <Upload className="w-4 h-4" /> {tx.admin("change_image")}
                             <input
                               type="file"
-                              accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/*"
+                              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
                               disabled={uploadingPrimary}
                               onChange={e => handlePrimaryUpload(e.target.files)}
                               className="hidden"
@@ -1366,7 +1366,7 @@ const res = await fetch("/api/admin/products", {
                         )}
                         <input
                           type="file"
-                          accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/*"
+                          accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
                           disabled={uploadingPrimary}
                           onChange={e => handlePrimaryUpload(e.target.files)}
                           className="hidden"
@@ -1401,7 +1401,7 @@ const res = await fetch("/api/admin/products", {
                       <input
                         type="file"
                         multiple
-                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/quicktime,video/webm,image/*,video/*"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/quicktime,video/webm"
                         disabled={uploadingGallery}
                         onChange={e => handleGalleryUpload(e.target.files)}
                         className="hidden"
