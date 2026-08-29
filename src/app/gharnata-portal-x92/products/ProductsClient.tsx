@@ -490,10 +490,7 @@ function getVideoProxyUrl(url: string): string {
     }
   }
 
-  // ─── GALLERY UPLOAD: images & videos → FormData → /api/admin/uploads ─────────
-  // ⚠️ IMPORTANT: We use FormData for ALL files (images + videos).
-  // Sending a raw File as body causes browsers to override Content-Type headers,
-  // breaking MIME detection on mobile (Android/iOS). FormData preserves the real type.
+  // ─── GALLERY UPLOAD: images & videos → R2 Presign (videos) / FormData (images) ───
   async function handleGalleryUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
@@ -502,7 +499,7 @@ function getVideoProxyUrl(url: string): string {
     const errorMessages: string[] = [];
 
     try {
-      // Get a fresh CSRF token once for the whole session
+      // Get fresh CSRF headers once for the session
       const sessionHeaders = await csrfHeaders();
 
       for (let i = 0; i < fileList.length; i++) {
@@ -517,32 +514,96 @@ function getVideoProxyUrl(url: string): string {
 
         try {
           if (isVideo) {
-            // ─── VIDEO: Send via FormData to /api/admin/uploads (unified route) ─
-            setUploadStatusText(`⬆️ Vidéo ${i + 1}/${fileList.length}…`);
-            const fd = new FormData();
-            // Append with filename so server can detect extension
-            fd.append("files", file, file.name);
+            // ─── VIDEO: Direct Presigned Upload to R2 (Bypasses Vercel 4.5MB limit) ─
+            setUploadStatusText(`⚡ Préparation vidéo ${i + 1}/${fileList.length}…`);
+            
+            let uploadedUrl: string | null = null;
 
-            const res = await fetch("/api/admin/uploads", {
-              method: "POST",
-              headers: sessionHeaders, // NO Content-Type: let browser set multipart boundary
-              body: fd,
-            });
+            // Step 1: Get presigned PUT URL from server
+            try {
+              const presignRes = await fetch("/api/admin/uploads/presign", {
+                method: "POST",
+                headers: {
+                  ...sessionHeaders,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  fileType: file.type || "video/mp4",
+                  fileSize: file.size,
+                  fileName: file.name,
+                }),
+              });
 
-            let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
-            try { data = await res.json(); } catch { /* empty body */ }
+              const presignData = await presignRes.json();
 
-            if (data.ok && data.files?.[0]) {
-              const uploadedUrl = data.files[0].url;
+              if (presignData.ok && presignData.presignedUrl && presignData.publicUrl) {
+                // Step 2: Upload directly to R2 via XHR with progress tracking
+                uploadedUrl = await new Promise<string>((resolve, reject) => {
+                  const xhr = new XMLHttpRequest();
+                  xhr.open("PUT", presignData.presignedUrl, true);
+                  
+                  // Mobile quicktime/mp4 mime fallback
+                  const rawExt = file.name ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase() : "";
+                  let mime = file.type;
+                  if (!mime || mime === "application/octet-stream") {
+                    if (rawExt === ".mov") mime = "video/quicktime";
+                    else mime = "video/mp4";
+                  }
+                  xhr.setRequestHeader("Content-Type", mime);
+
+                  xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                      const pct = Math.round((e.loaded / e.total) * 100);
+                      const loadedMb = (e.loaded / 1024 / 1024).toFixed(1);
+                      const totalMb = (e.total / 1024 / 1024).toFixed(1);
+                      setUploadStatusText(`⬆️ Vidéo ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb}/${totalMb} MB`);
+                    }
+                  };
+
+                  xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                      resolve(presignData.publicUrl);
+                    } else {
+                      reject(new Error(`R2 Direct Upload Error HTTP ${xhr.status}`));
+                    }
+                  };
+
+                  xhr.onerror = () => reject(new Error("Erreur réseau (Cloudflare R2 Direct)"));
+                  xhr.ontimeout = () => reject(new Error("Timeout d'envoi vidéo"));
+                  xhr.send(file);
+                });
+              }
+            } catch (presignError) {
+              console.warn(`[gallery] presigned upload failed for vid ${i + 1}, trying server fallback:`, presignError);
+            }
+
+            // Step 3: Fallback to FormData server upload if presign failed
+            if (!uploadedUrl) {
+              setUploadStatusText(`⬆️ Vidéo ${i + 1}/${fileList.length} (Serveur)…`);
+              const fd = new FormData();
+              fd.append("files", file, file.name);
+
+              const res = await fetch("/api/admin/uploads", {
+                method: "POST",
+                headers: sessionHeaders,
+                body: fd,
+              });
+
+              let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
+              try { data = await res.json(); } catch { /* empty body */ }
+
+              if (data.ok && data.files?.[0]) {
+                uploadedUrl = data.files[0].url;
+              } else {
+                throw new Error(data.error || `HTTP ${res.status}`);
+              }
+            }
+
+            if (uploadedUrl) {
               console.log(`[gallery] ✅ vid ${i + 1} →`, uploadedUrl);
-              setForm(f => ({ ...f, videos: [...(f.videos || []), uploadedUrl] }));
+              setForm(f => ({ ...f, videos: [...(f.videos || []), uploadedUrl!] }));
               successCount++;
               setUploadStatusText(`✅ Vidéo ${i + 1}/${fileList.length} OK`);
-            } else {
-              const err = data.error || `HTTP ${res.status}`;
-              console.error(`[gallery] ❌ vid ${i + 1}:`, err);
-              errorMessages.push(`Vidéo ${i + 1}: ${err}`);
-              setUploadStatusText(`❌ Vidéo ${i + 1}: ${err}`);
             }
           } else {
             // ─── IMAGE: Compress then FormData → /api/admin/uploads ───────────

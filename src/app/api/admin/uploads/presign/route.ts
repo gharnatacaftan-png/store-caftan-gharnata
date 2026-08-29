@@ -42,10 +42,25 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json() as { fileType?: string; fileSize?: number; fileName?: string };
-    const { fileType, fileSize, fileName } = body;
+    let { fileType, fileSize, fileName } = body;
+
+    // Detect MIME type from extension if missing or generic on mobile
+    const rawFileName = decodeURIComponent(fileName || "");
+    const rawExt = rawFileName ? rawFileName.slice(rawFileName.lastIndexOf(".")).toLowerCase() : "";
+
+    if (!fileType || fileType === "application/octet-stream" || !fileType.startsWith("video/")) {
+      if (rawExt === ".mov") fileType = "video/quicktime";
+      else if (rawExt === ".mp4") fileType = "video/mp4";
+      else if (rawExt === ".webm") fileType = "video/webm";
+      else if (rawExt === ".3gp") fileType = "video/3gpp";
+      else if (rawExt === ".m4v") fileType = "video/x-m4v";
+      else if (rawExt === ".avi") fileType = "video/avi";
+      else if (rawExt === ".mkv") fileType = "video/x-matroska";
+      else fileType = "video/mp4"; // Default fallback for video presign
+    }
 
     // Must be a video
-    if (!fileType || !fileType.startsWith("video/")) {
+    if (!fileType.startsWith("video/")) {
       return errorResponse("فقط ملفات الفيديو مسموح بها هنا", 400);
     }
 
