@@ -590,12 +590,17 @@ function getVideoProxyUrl(url: string): string {
     if (!files || !files[0]) return;
     const rawFile = files[0];
     setUploadingPrimary(true);
+    
+    // Show a LOCAL preview immediately so user sees their photo right away
+    const localPreview = URL.createObjectURL(rawFile);
+    setForm(f => ({ ...f, primary_image: localPreview }));
+    
     try {
       const hdrs = await csrfHeaders();
       setUploadStatusTextPrimary(`⚡ Compression de l'image…`);
       
       const file = await compressImageIfNeeded(rawFile);
-      setUploadStatusTextPrimary(`⚡ Préparation de l'image…`);
+      setUploadStatusTextPrimary(`⚡ Envoi de l'image…`);
 
       const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
         setUploadStatusTextPrimary(
@@ -603,13 +608,16 @@ function getVideoProxyUrl(url: string): string {
         );
       });
 
+      // Replace local blob with the real R2 URL
       const newUrl = fixMediaUrl(url);
       setForm(f => ({ ...f, primary_image: newUrl }));
+      URL.revokeObjectURL(localPreview);
       setUploadStatusTextPrimary("✅ Photo uploadée!");
       console.log("[primary upload] ✅", newUrl);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[primary upload] ❌", e);
+      // Keep local preview so user still sees their photo
       setUploadStatusTextPrimary(`❌ ${msg}`);
     } finally {
       setUploadingPrimary(false);
@@ -625,6 +633,11 @@ function getVideoProxyUrl(url: string): string {
     setUploadingGallery(true);
     let successCount = 0;
     const errors: string[] = [];
+
+    // Collect ALL results first, then flush to state once at the end
+    // This prevents React batching from losing the last item(s)
+    const newImages: string[] = [];
+    const newVideos: string[] = [];
 
     try {
       // Fetch CSRF headers once for the whole batch
@@ -642,7 +655,7 @@ function getVideoProxyUrl(url: string): string {
           if (!isVideo) setUploadStatusTextGallery(`⚡ Compression ${kind} ${i + 1}/${fileList.length}…`);
           const file = isVideo ? rawFile : await compressImageIfNeeded(rawFile);
           
-          setUploadStatusTextGallery(`⚡ Préparation ${kind} ${i + 1}/${fileList.length}…`);
+          setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
 
           const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
             setUploadStatusTextGallery(
@@ -653,10 +666,11 @@ function getVideoProxyUrl(url: string): string {
           const cleanUrl = fixMediaUrl(url);
           console.log(`[gallery] ✅ ${kind} ${i + 1} →`, cleanUrl);
 
+          // Accumulate instead of calling setForm in the loop
           if (isVideo) {
-            setForm(f => ({ ...f, videos: [...(f.videos || []), cleanUrl] }));
+            newVideos.push(cleanUrl);
           } else {
-            setForm(f => ({ ...f, images: [...f.images, cleanUrl] }));
+            newImages.push(cleanUrl);
           }
 
           successCount++;
@@ -668,6 +682,15 @@ function getVideoProxyUrl(url: string): string {
           setUploadStatusTextGallery(`❌ ${kind} ${i + 1}: ${msg}`);
           // Always continue — don't abort the whole batch on a single failure
         }
+      }
+
+      // ★ SINGLE state flush — guarantees ALL uploaded files are saved, not just N-1
+      if (newImages.length > 0 || newVideos.length > 0) {
+        setForm(f => ({
+          ...f,
+          images: [...f.images, ...newImages],
+          videos: [...(f.videos || []), ...newVideos],
+        }));
       }
     } finally {
       setUploadingGallery(false);
@@ -1363,7 +1386,7 @@ const res = await fetch("/api/admin/products", {
                             <Upload className="w-4 h-4" /> {tx.admin("change_image")}
                             <input
                               type="file"
-                              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                              accept="image/*,image/heic,image/heif,.heic,.heif"
                               disabled={uploadingPrimary}
                               onChange={e => handlePrimaryUpload(e.target.files)}
                               className="hidden"
