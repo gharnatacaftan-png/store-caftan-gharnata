@@ -77,8 +77,33 @@ export async function optimizeUploadedImage(
           contentType: "image/avif",
           ext: ".avif",
         };
+      // ─── Mobile / iPhone photo formats ──────────────────────────────────────
+      // iPhone saves photos as HEIC (sharp reports format as "heif").
+      // Browsers CANNOT display HEIC natively → MUST convert to WebP.
+      case "heif": // covers both .heic and .heif
+      case "heic":
+      case "tiff":
+      case "tif":
+      case "bmp":
+      case "jfif":
+        return {
+          buffer: await image.webp({ quality: QUALITY }).toBuffer(),
+          contentType: "image/webp",
+          ext: ".webp",
+        };
       default:
-        return { buffer: input, contentType: mime, ext: extFromMime(mime) };
+        // Unknown format: try to convert to JPEG as universal fallback.
+        // This is safer than passing raw bytes that browsers may refuse to display.
+        try {
+          return {
+            buffer: await image.jpeg({ quality: QUALITY, mozjpeg: true }).toBuffer(),
+            contentType: "image/jpeg",
+            ext: ".jpg",
+          };
+        } catch {
+          // If even JPEG conversion fails, return the original (upload still works)
+          return { buffer: input, contentType: mime, ext: extFromMime(mime) };
+        }
     }
   } catch {
     // sharp indisponible (Workers) ou image illisible — on garde les octets

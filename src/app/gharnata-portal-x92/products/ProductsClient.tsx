@@ -455,114 +455,140 @@ function getVideoProxyUrl(url: string): string {
     setUploadingPrimary(true);
     setUploadStatusText(tx.admin("upload_status_compressing"));
     try {
+      // Always compress (skip if HEIC/video — server handles it)
       const compressed = await compressImageIfNeeded(file);
       setUploadStatusText(tx.admin("upload_status_uploading"));
 
-const body = new FormData();
-      body.append("files", compressed);
+      const body = new FormData();
+      // FormData preserves the real file type — browser will never override it
+      body.append("files", compressed, compressed.name);
       const res = await fetch("/api/admin/uploads", {
         method: "POST",
-        headers: await csrfHeaders(),
+        headers: await csrfHeaders(), // NO Content-Type — let browser set multipart/form-data boundary
         body,
       });
-      const data = await res.json();
+
+      let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
+      try { data = await res.json(); } catch { /* empty body */ }
 
       if (data.ok && data.files?.[0]) {
-        setForm(f => ({ ...f, primary_image: fixMediaUrl(data.files[0].url) }));
+        const newUrl = fixMediaUrl(data.files[0].url);
+        console.log("[primary upload] ✅ URL:", newUrl);
+        setForm(f => ({ ...f, primary_image: newUrl }));
+        setUploadStatusText("✅ Photo uploadée!");
       } else {
-        setUploadStatusText(data.error || tx.admin("upload_failed"));
+        const errMsg = data.error || `HTTP ${res.status} — ${tx.admin("upload_failed")}`;
+        console.error("[primary upload] ❌", errMsg);
+        setUploadStatusText(`❌ ${errMsg}`);
       }
-    } catch {
-      setUploadStatusText(tx.admin("upload_error"));
+    } catch (e) {
+      console.error("[primary upload] exception:", e);
+      setUploadStatusText(`❌ ${tx.admin("upload_error")}`);
     } finally {
       setUploadingPrimary(false);
-      setTimeout(() => setUploadStatusText(""), 3000);
+      setTimeout(() => setUploadStatusText(""), 5000);
     }
   }
 
-  // ─── GALLERY UPLOAD: images & videos → FormData → server → R2 ───────────────
+  // ─── GALLERY UPLOAD: images & videos → FormData → /api/admin/uploads ─────────
+  // ⚠️ IMPORTANT: We use FormData for ALL files (images + videos).
+  // Sending a raw File as body causes browsers to override Content-Type headers,
+  // breaking MIME detection on mobile (Android/iOS). FormData preserves the real type.
   async function handleGalleryUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
     setUploadingGallery(true);
-    let hasError = false;
     let successCount = 0;
+    const errorMessages: string[] = [];
 
     try {
+      // Get a fresh CSRF token once for the whole session
+      const sessionHeaders = await csrfHeaders();
+
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
-        const isVideo = file.type.startsWith("video/") || (!file.type && /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(file.name));
+        const isVideo = file.type.startsWith("video/") ||
+          /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(file.name);
         const label = isVideo ? tx.admin("media_label_video") : tx.admin("media_label_image");
 
         setUploadStatusText(
-          tx.admin("processing_upload")
-            .replace("{label}", label)
-            .replace("{i}", String(i + 1))
-            .replace("{total}", String(fileList.length))
-            .replace("{file}", file.name)
+          `${label} ${i + 1}/${fileList.length} — ${file.name}`
         );
 
         try {
           if (isVideo) {
-            setUploadStatusText(`${tx.admin("uploading_video_r2")} (${i + 1}/${fileList.length})`);
-
-            const videoType = file.type || "video/mp4";
-            const videoRes = await fetch("/api/admin/uploads/video", {
-              method: "POST",
-              headers: await csrfHeaders({
-                "Content-Type": videoType,
-                "x-file-type": videoType,
-                "x-file-size": String(file.size),
-                "x-file-name": encodeURIComponent(file.name),
-              }),
-              body: file,
-            });
-
-            const videoData = await videoRes.json();
-            if (videoData.ok && videoData.files?.[0]) {
-              const uploadedUrl = videoData.files[0].url;
-              setForm(f => ({ ...f, videos: [...(f.videos || []), uploadedUrl] }));
-              successCount++;
-              setUploadStatusText(`${tx.admin("video_uploaded")} (${i + 1}/${fileList.length})`);
-            } else {
-              setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", videoData.error || tx.admin("upload_failed")));
-              hasError = true;
-            }
-          } else {
-            setUploadStatusText(tx.admin("compressing_image"));
-            const compressed = await compressImageIfNeeded(file);
-            setUploadStatusText(tx.admin("uploading_image"));
+            // ─── VIDEO: Send via FormData to /api/admin/uploads (unified route) ─
+            setUploadStatusText(`⬆️ Vidéo ${i + 1}/${fileList.length}…`);
             const fd = new FormData();
-            fd.append("files", compressed);
+            // Append with filename so server can detect extension
+            fd.append("files", file, file.name);
 
             const res = await fetch("/api/admin/uploads", {
               method: "POST",
-              headers: await csrfHeaders(),
+              headers: sessionHeaders, // NO Content-Type: let browser set multipart boundary
               body: fd,
             });
-            const data = await res.json();
+
+            let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
+            try { data = await res.json(); } catch { /* empty body */ }
 
             if (data.ok && data.files?.[0]) {
               const uploadedUrl = data.files[0].url;
+              console.log(`[gallery] ✅ vid ${i + 1} →`, uploadedUrl);
+              setForm(f => ({ ...f, videos: [...(f.videos || []), uploadedUrl] }));
+              successCount++;
+              setUploadStatusText(`✅ Vidéo ${i + 1}/${fileList.length} OK`);
+            } else {
+              const err = data.error || `HTTP ${res.status}`;
+              console.error(`[gallery] ❌ vid ${i + 1}:`, err);
+              errorMessages.push(`Vidéo ${i + 1}: ${err}`);
+              setUploadStatusText(`❌ Vidéo ${i + 1}: ${err}`);
+            }
+          } else {
+            // ─── IMAGE: Compress then FormData → /api/admin/uploads ───────────
+            setUploadStatusText(`🔄 Compression image ${i + 1}/${fileList.length}…`);
+            const compressed = await compressImageIfNeeded(file);
+            setUploadStatusText(`⬆️ Image ${i + 1}/${fileList.length}…`);
+            const fd = new FormData();
+            fd.append("files", compressed, compressed.name);
+
+            const res = await fetch("/api/admin/uploads", {
+              method: "POST",
+              headers: sessionHeaders,
+              body: fd,
+            });
+
+            let data: { ok?: boolean; files?: { url: string }[]; error?: string } = {};
+            try { data = await res.json(); } catch { /* empty body */ }
+
+            if (data.ok && data.files?.[0]) {
+              const uploadedUrl = data.files[0].url;
+              console.log(`[gallery] ✅ img ${i + 1} →`, uploadedUrl);
               setForm(f => ({ ...f, images: [...f.images, uploadedUrl] }));
               successCount++;
-              setUploadStatusText(`${tx.admin("image_uploaded")} (${i + 1}/${fileList.length})`);
+              setUploadStatusText(`✅ Image ${i + 1}/${fileList.length} OK`);
             } else {
-              setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", data.error || tx.admin("upload_failed")));
-              hasError = true;
+              const err = data.error || `HTTP ${res.status}`;
+              console.error(`[gallery] ❌ img ${i + 1}:`, err);
+              errorMessages.push(`Image ${i + 1}: ${err}`);
+              setUploadStatusText(`❌ Image ${i + 1}: ${err}`);
             }
           }
         } catch (e: unknown) {
-          console.error("[gallery upload] error:", e);
-          setUploadStatusText(tx.admin("upload_error_occurred"));
-          hasError = true;
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`[gallery] exception file ${i + 1}:`, e);
+          errorMessages.push(`Fichier ${i + 1}: ${msg}`);
+          setUploadStatusText(`❌ Erreur fichier ${i + 1}: ${msg}`);
+          // Continue with next file — don't stop the whole loop
         }
       }
     } finally {
       setUploadingGallery(false);
-      if (!hasError) {
-        setUploadStatusText(tx.admin("upload_complete").replace("{n}", String(successCount)));
-        setTimeout(() => setUploadStatusText(""), 3000);
+      if (successCount > 0 && errorMessages.length === 0) {
+        setUploadStatusText(`✅ ${successCount} fichier(s) uploadé(s)`);
+        setTimeout(() => setUploadStatusText(""), 4000);
+      } else if (errorMessages.length > 0) {
+        setUploadStatusText(`⚠️ ${successCount} OK / ${errorMessages.length} erreur(s) — voir console`);
       }
     }
   }
@@ -1238,8 +1264,9 @@ const res = await fetch("/api/admin/products", {
                           src={form.primary_image}
                           alt="Main Product"
                           className="w-full h-full object-cover"
-onError={(e) => {
-                            (e.target as HTMLImageElement).src = "/images/hero_caftan.webp";
+                          onError={(e) => {
+                            console.error("[primary_image] Failed to load image:", form.primary_image);
+                            // Do NOT set default hero image — keep image attempt clear
                           }}
                         />
                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
@@ -1247,7 +1274,7 @@ onError={(e) => {
                             <Upload className="w-4 h-4" /> {tx.admin("change_image")}
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/*"
                               disabled={uploadingPrimary}
                               onChange={e => handlePrimaryUpload(e.target.files)}
                               className="hidden"
@@ -1278,7 +1305,7 @@ onError={(e) => {
                         )}
                         <input
                           type="file"
-                          accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp"
+                          accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/*"
                           disabled={uploadingPrimary}
                           onChange={e => handlePrimaryUpload(e.target.files)}
                           className="hidden"
@@ -1313,7 +1340,7 @@ onError={(e) => {
                       <input
                         type="file"
                         multiple
-                        accept="image/*,video/*,.heic,.heif,.mov,.mp4,.webm,.mkv,.3gp"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/quicktime,video/webm,image/*,video/*"
                         disabled={uploadingGallery}
                         onChange={e => handleGalleryUpload(e.target.files)}
                         className="hidden"
