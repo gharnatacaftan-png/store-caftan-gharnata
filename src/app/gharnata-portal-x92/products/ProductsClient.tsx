@@ -468,56 +468,19 @@ function getVideoProxyUrl(url: string): string {
   // as a pre-processing step BEFORE the presign flow.
   // ─────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Get a presigned R2 PUT URL from the server, then upload the file directly
-   * to Cloudflare R2 using XHR (progress events supported).
-   *
-   * @param file         The File object to upload
-   * @param sessionHdrs  CSRF headers (already fetched)
-   * @param onProgress   Optional progress callback: (pct: number, loadedMb: number, totalMb: number) => void
-   * @returns            The public Cloudflare R2 URL of the uploaded file
-   */
   async function uploadFile(
     file: File,
     sessionHdrs: Record<string, string>,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<string> {
-    // Step 1: Ask the server to sign a PUT URL for this file
-    const presignRes = await fetch("/api/admin/uploads/presign", {
-      method: "POST",
-      headers: { ...sessionHdrs, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fileName: file.name,
-        fileType: file.type || "",   // server will fix generic/empty types via extension
-        fileSize: file.size,
-      }),
-    });
-
-    if (!presignRes.ok) {
-      let errMsg = `Presign HTTP ${presignRes.status}`;
-      try {
-        const j = await presignRes.json();
-        if (j?.error) errMsg = j.error;
-      } catch { /* ignore */ }
-      throw new Error(errMsg);
-    }
-
-    const presign = await presignRes.json() as {
-      ok: boolean;
-      presignedUrl: string;
-      publicUrl: string;
-      mimeType: string;
-    };
-
-    if (!presign.ok || !presign.presignedUrl || !presign.publicUrl) {
-      throw new Error(presign.ok ? "URL manquante dans la réponse presign" : "Presign refusé par le serveur");
-    }
-
-    // Step 2: Upload the file directly to R2 via XHR (supports progress)
-    await new Promise<void>((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("PUT", presign.presignedUrl, true);
-      xhr.setRequestHeader("Content-Type", presign.mimeType);
+      xhr.open("POST", "/api/admin/uploads", true);
+
+      // Add CSRF headers
+      for (const [key, val] of Object.entries(sessionHdrs)) {
+        xhr.setRequestHeader(key, val);
+      }
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -530,18 +493,32 @@ function getVideoProxyUrl(url: string): string {
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.ok && res.files && res.files.length > 0) {
+              resolve(res.files[0].url);
+            } else {
+              reject(new Error(res.error || "Erreur inconnue du serveur"));
+            }
+          } catch {
+            reject(new Error("Réponse serveur invalide"));
+          }
         } else {
-          reject(new Error(`R2 Upload Error HTTP ${xhr.status}: ${xhr.statusText}`));
+          if (xhr.status === 413) {
+            reject(new Error("Fichier trop volumineux (Limite Vercel: 4.5 Mo). Utilisez un lien vidéo."));
+          } else {
+            reject(new Error(`Erreur serveur HTTP ${xhr.status}`));
+          }
         }
       };
 
-      xhr.onerror = () => reject(new Error("Erreur réseau lors de l'upload vers R2"));
+      xhr.onerror = () => reject(new Error("Erreur réseau (connexion interrompue)"));
       xhr.ontimeout = () => reject(new Error("Timeout: la connexion est trop lente"));
-      xhr.send(file);
+      
+      const formData = new FormData();
+      formData.append("files", file);
+      xhr.send(formData);
     });
-
-    return presign.publicUrl;
   }
 
   // ─── PRIMARY IMAGE UPLOAD ─────────────────────────────────────────────────
