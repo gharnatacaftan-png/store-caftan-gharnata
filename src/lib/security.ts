@@ -91,7 +91,24 @@ export function isValidOrderStatus(status: unknown): boolean {
   return ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"].includes(status as string);
 }
 
-export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"];
+export const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "image/pjpeg",
+  "image/x-png",
+  "image/bmp",
+  "image/x-ms-bmp",
+  "image/tiff",
+  "application/octet-stream",
+];
 export const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/webm",

@@ -13,9 +13,17 @@ import {
 
 export const runtime = "nodejs";
 
-function getFileKind(mimeType: string): "IMAGE" | "VIDEO" | "UNKNOWN" {
-  if (ALLOWED_IMAGE_TYPES.includes(mimeType)) return "IMAGE";
-  if (ALLOWED_VIDEO_TYPES.includes(mimeType)) return "VIDEO";
+function getFileKind(mimeType: string, fileName?: string): "IMAGE" | "VIDEO" | "UNKNOWN" {
+  const rawExt = fileName ? path.extname(fileName).toLowerCase() : "";
+  const imageExts = [".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".heic", ".heif", ".bmp", ".tiff", ".jfif"];
+  const videoExts = [".mp4", ".webm", ".mov", ".mkv", ".avi", ".3gp", ".3g2", ".ogv", ".flv", ".mpeg", ".ts", ".wmv", ".m4v"];
+
+  if (ALLOWED_IMAGE_TYPES.includes(mimeType) || imageExts.includes(rawExt) || mimeType.startsWith("image/")) {
+    return "IMAGE";
+  }
+  if (ALLOWED_VIDEO_TYPES.includes(mimeType) || videoExts.includes(rawExt) || mimeType.startsWith("video/")) {
+    return "VIDEO";
+  }
   return "UNKNOWN";
 }
 
@@ -43,16 +51,21 @@ export async function POST(req: NextRequest) {
 
     const results = await Promise.all(
       files.map(async (file) => {
-        // Fallback for iPhone videos that might not have a clear MIME type
+        // Fallback for iPhone/Android files that might not have a clear MIME type
         let fileType = file.type;
         const rawExt = path.extname(file.name).toLowerCase();
         
-        if (!fileType) {
+        if (!fileType || fileType === "application/octet-stream") {
           if (rawExt === ".mov") fileType = "video/quicktime";
           else if (rawExt === ".mp4") fileType = "video/mp4";
+          else if (rawExt === ".heic") fileType = "image/heic";
+          else if (rawExt === ".heif") fileType = "image/heif";
+          else if (rawExt === ".jpg" || rawExt === ".jpeg") fileType = "image/jpeg";
+          else if (rawExt === ".png") fileType = "image/png";
+          else if (rawExt === ".webp") fileType = "image/webp";
         }
 
-        const kind = getFileKind(fileType);
+        const kind = getFileKind(fileType, file.name);
         if (kind === "UNKNOWN") {
           throw new Error(`نوع الملف غير مدعوم: ${fileType || rawExt || "Unknown"}`);
         }

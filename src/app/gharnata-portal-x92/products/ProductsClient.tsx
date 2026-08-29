@@ -207,54 +207,74 @@ function normalizeDashboardProduct(p: RawProduct): D1ProductItem {
  * Makes uploads 15x faster on Algerian mobile/DSL connections!
  */
 async function compressImageIfNeeded(file: File): Promise<File> {
-  if (!file.type.startsWith("image/") || file.size < 300 * 1024) {
+  const isImg = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|avif|heic|heif)$/i.test(file.name);
+  if (!isImg || file.size < 300 * 1024) {
     return file; // Skip videos or small images
   }
 
   return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement("canvas");
-      const MAX_DIM = 1800; // Crisp quality for fashion products
-      let width = img.width;
-      let height = img.height;
+    // 3.5s Timeout Safety: Never block mobile uploads if Canvas compression hangs on HEIC/mobile photo formats!
+    const timer = setTimeout(() => resolve(file), 3500);
 
-      if (width > height) {
-        if (width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        try {
+          const canvas = document.createElement("canvas");
+          const MAX_DIM = 1800; // Crisp quality for fashion products
+          let width = img.width;
+          let height = img.height;
+
+          if (!width || !height) { resolve(file); return; }
+
+          if (width > height) {
+            if (width > MAX_DIM) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            }
+          } else {
+            if (height > MAX_DIM) {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(file); return; }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) { resolve(file); return; }
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+                type: "image/webp",
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
+            "image/webp",
+            0.85
+          );
+        } catch {
+          resolve(file);
         }
-      } else {
-        if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(file); return; }
-
-      ctx.drawImage(img, 0, 0, width, height);
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { resolve(file); return; }
-          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
-            type: "image/webp",
-            lastModified: Date.now(),
-          });
-          resolve(compressedFile);
-        },
-        "image/webp",
-        0.85
-      );
-    };
-    img.onerror = () => resolve(file);
-    img.src = url;
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        try { URL.revokeObjectURL(url); } catch {}
+        resolve(file);
+      };
+      img.src = url;
+    } catch {
+      clearTimeout(timer);
+      resolve(file);
+    }
   });
 }
 
@@ -323,8 +343,11 @@ export default function ProductsClient({ initialProducts }: { initialProducts: R
   const [urlInput, setUrlInput] = useState("");
   const [videoLinkInput, setVideoLinkInput] = useState("");
 
-  const handleAddVideoLink = () => {
-    const url = videoLinkInput.trim();
+  const handleAddVideoLink = (e?: React.SyntheticEvent) => {
+    if (e) e.preventDefault();
+    const raw = videoLinkInput || "";
+    // Clean mobile URL: strip newlines, whitespace, zero-width space characters from mobile clipboard
+    const url = raw.trim().replace(/[\r\n\t\u200B-\u200D\uFEFF]/g, "");
     if (!url) return;
     setForm(f => ({
       ...f,
@@ -462,93 +485,85 @@ const body = new FormData();
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
     setUploadingGallery(true);
-
-    const newImages: string[] = [];
-    const newVideos: string[] = [];
     let hasError = false;
+    let successCount = 0;
 
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      const isVideo = file.type.startsWith("video/") || (!file.type && /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(file.name));
-      const label = isVideo ? tx.admin("media_label_video") : tx.admin("media_label_image");
+    try {
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        const isVideo = file.type.startsWith("video/") || (!file.type && /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(file.name));
+        const label = isVideo ? tx.admin("media_label_video") : tx.admin("media_label_image");
 
-      setUploadStatusText(
-        tx.admin("processing_upload")
-          .replace("{label}", label)
-          .replace("{i}", String(i + 1))
-          .replace("{total}", String(fileList.length))
-          .replace("{file}", file.name)
-      );
+        setUploadStatusText(
+          tx.admin("processing_upload")
+            .replace("{label}", label)
+            .replace("{i}", String(i + 1))
+            .replace("{total}", String(fileList.length))
+            .replace("{file}", file.name)
+        );
 
-      try {
-        if (isVideo) {
-          // Videos: send raw body directly to /api/admin/uploads/video
-          // (Presigned R2 URLs point to the private S3 endpoint which is not
-          //  DNS-resolvable from browsers. This server-side route is reliable.)
-          setUploadStatusText(`${tx.admin("uploading_video_r2")} (${i + 1}/${fileList.length})`);
+        try {
+          if (isVideo) {
+            setUploadStatusText(`${tx.admin("uploading_video_r2")} (${i + 1}/${fileList.length})`);
 
-          const videoType = file.type || "video/mp4";
-          const videoRes = await fetch("/api/admin/uploads/video", {
-            method: "POST",
-            headers: await csrfHeaders({
-              "Content-Type": videoType,
-              "x-file-type": videoType,
-              "x-file-size": String(file.size),
-              "x-file-name": encodeURIComponent(file.name),
-            }),
-            body: file,
-          });
+            const videoType = file.type || "video/mp4";
+            const videoRes = await fetch("/api/admin/uploads/video", {
+              method: "POST",
+              headers: await csrfHeaders({
+                "Content-Type": videoType,
+                "x-file-type": videoType,
+                "x-file-size": String(file.size),
+                "x-file-name": encodeURIComponent(file.name),
+              }),
+              body: file,
+            });
 
-          const videoData = await videoRes.json();
-          if (videoData.ok && videoData.files?.[0]) {
-            newVideos.push(videoData.files[0].url);
-            setUploadStatusText(`${tx.admin("video_uploaded")} (${i + 1}/${fileList.length})`);
+            const videoData = await videoRes.json();
+            if (videoData.ok && videoData.files?.[0]) {
+              const uploadedUrl = videoData.files[0].url;
+              setForm(f => ({ ...f, videos: [...(f.videos || []), uploadedUrl] }));
+              successCount++;
+              setUploadStatusText(`${tx.admin("video_uploaded")} (${i + 1}/${fileList.length})`);
+            } else {
+              setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", videoData.error || tx.admin("upload_failed")));
+              hasError = true;
+            }
           } else {
-            setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", videoData.error || tx.admin("upload_failed")));
-            hasError = true;
-          }
-        } else {
-          // Images: compress then FormData -> /api/admin/uploads
-          setUploadStatusText(tx.admin("compressing_image"));
-          const compressed = await compressImageIfNeeded(file);
-          setUploadStatusText(tx.admin("uploading_image"));
-          const fd = new FormData();
-          fd.append("files", compressed);
+            setUploadStatusText(tx.admin("compressing_image"));
+            const compressed = await compressImageIfNeeded(file);
+            setUploadStatusText(tx.admin("uploading_image"));
+            const fd = new FormData();
+            fd.append("files", compressed);
 
-          const res = await fetch("/api/admin/uploads", {
-            method: "POST",
-            headers: await csrfHeaders(),
-            body: fd,
-          });
-          const data = await res.json();
+            const res = await fetch("/api/admin/uploads", {
+              method: "POST",
+              headers: await csrfHeaders(),
+              body: fd,
+            });
+            const data = await res.json();
 
-          if (data.ok && data.files?.[0]) {
-            newImages.push(data.files[0].url);
-            setUploadStatusText(`${tx.admin("image_uploaded")} (${i + 1}/${fileList.length})`);
-          } else {
-            setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", data.error || tx.admin("upload_failed")));
-            hasError = true;
+            if (data.ok && data.files?.[0]) {
+              const uploadedUrl = data.files[0].url;
+              setForm(f => ({ ...f, images: [...f.images, uploadedUrl] }));
+              successCount++;
+              setUploadStatusText(`${tx.admin("image_uploaded")} (${i + 1}/${fileList.length})`);
+            } else {
+              setUploadStatusText(tx.admin("upload_failed_media").replace("{err}", data.error || tx.admin("upload_failed")));
+              hasError = true;
+            }
           }
+        } catch (e: unknown) {
+          console.error("[gallery upload] error:", e);
+          setUploadStatusText(tx.admin("upload_error_occurred"));
+          hasError = true;
         }
-      } catch (e: unknown) {
-        console.error("[gallery upload] error:", e);
-        setUploadStatusText(tx.admin("upload_error_occurred"));
-        hasError = true;
       }
-    }
-
-    if (newImages.length > 0 || newVideos.length > 0) {
-      setForm(f => ({
-        ...f,
-        images: [...f.images, ...newImages],
-        videos: [...f.videos, ...newVideos],
-      }));
-    }
-
-    setUploadingGallery(false);
-    if (!hasError) {
-      setUploadStatusText(tx.admin("upload_complete").replace("{n}", String(newImages.length + newVideos.length)));
-      setTimeout(() => setUploadStatusText(""), 3000);
+    } finally {
+      setUploadingGallery(false);
+      if (!hasError) {
+        setUploadStatusText(tx.admin("upload_complete").replace("{n}", String(successCount)));
+        setTimeout(() => setUploadStatusText(""), 3000);
+      }
     }
   }
 
@@ -1263,7 +1278,7 @@ onError={(e) => {
                         )}
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp"
                           disabled={uploadingPrimary}
                           onChange={e => handlePrimaryUpload(e.target.files)}
                           className="hidden"
@@ -1298,7 +1313,7 @@ onError={(e) => {
                       <input
                         type="file"
                         multiple
-                        accept="image/*,video/*"
+                        accept="image/*,video/*,.heic,.heif,.mov,.mp4,.webm,.mkv,.3gp"
                         disabled={uploadingGallery}
                         onChange={e => handleGalleryUpload(e.target.files)}
                         className="hidden"
@@ -1316,16 +1331,19 @@ onError={(e) => {
                       </div>
                       <div className="flex gap-2">
                         <input
+                          type="text"
+                          inputMode="url"
                           value={videoLinkInput}
                           onChange={e => setVideoLinkInput(e.target.value)}
-                          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), handleAddVideoLink())}
+                          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), handleAddVideoLink(e))}
                           className="flex-1 bg-[#101018] border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 dir-ltr"
                           placeholder="https://www.instagram.com/reel/... ou lien direct https://.../video.mp4"
                         />
                         <button
                           type="button"
                           onClick={handleAddVideoLink}
-                          className="bg-[#D4AF37] text-black hover:bg-[#c29c2d] px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shadow-md shadow-[#D4AF37]/20"
+                          onTouchEnd={handleAddVideoLink}
+                          className="bg-[#D4AF37] text-black hover:bg-[#c29c2d] px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shadow-md shadow-[#D4AF37]/20 active:scale-95 touch-manipulation"
                         >
                           + Ajouter le lien
                         </button>

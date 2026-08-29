@@ -40,8 +40,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // 3. Validate Content-Type header (must be a video)
-    const contentType = (req.headers.get("x-file-type") || req.headers.get("content-type") || "").split(";")[0].trim();
+    // 3. Validate Content-Type header (must be a video or fallback from extension)
+    let contentType = (req.headers.get("x-file-type") || req.headers.get("content-type") || "").split(";")[0].trim();
+    const rawFileName = decodeURIComponent(req.headers.get("x-file-name") || "");
+    const rawExt = rawFileName ? rawFileName.slice(rawFileName.lastIndexOf(".")).toLowerCase() : "";
+
+    if (!contentType || contentType === "application/octet-stream" || !contentType.startsWith("video/")) {
+      if (rawExt === ".mov") contentType = "video/quicktime";
+      else if (rawExt === ".mp4") contentType = "video/mp4";
+      else if (rawExt === ".webm") contentType = "video/webm";
+      else if (rawExt === ".3gp") contentType = "video/3gpp";
+      else if (rawExt === ".m4v") contentType = "video/x-m4v";
+      else if (rawExt === ".avi") contentType = "video/avi";
+      else if (rawExt === ".mkv") contentType = "video/x-matroska";
+      else contentType = "video/mp4"; // Default fallback for video endpoint
+    }
 
     if (!contentType.startsWith("video/")) {
       return errorResponse(`نوع الملف غير مدعوم: "${contentType}". فقط ملفات الفيديو مسموح بها.`, 400);
