@@ -182,7 +182,7 @@ export async function PATCH(req: NextRequest) {
           const getCmd = new (await import("@aws-sdk/client-s3")).GetObjectCommand({ Bucket: BUCKET, Key: key });
           const obj = await client.send(getCmd);
           if (obj.Body) {
-            const bytes = await obj.Body.transformToByteArray();
+            const bytes = Buffer.from(await obj.Body.transformToByteArray());
             const optimized = await optimizeUploadedImage(bytes, obj.ContentType || "image/jpeg");
             
             // Re-upload optimized version
