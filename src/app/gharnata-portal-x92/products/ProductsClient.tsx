@@ -682,6 +682,12 @@ function getVideoProxyUrl(url: string): string {
           setUploadStatusTextGallery(`❌ ${kind} ${i + 1}: ${msg}`);
           // Always continue — don't abort the whole batch on a single failure
         }
+
+        // ★ Breathing room between files — gives mobile browsers time to free RAM
+        // (prevents the last-file crash on low-memory Android/iPhone)
+        if (i < fileList.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
       }
 
       // ★ SINGLE state flush — guarantees ALL uploaded files are saved, not just N-1
