@@ -131,7 +131,7 @@ export default function GalleryClient({
       <div className="flex flex-wrap gap-2">
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,video/*,image/heic,image/heif,.heic,.heif"
           className="hidden"
           id={`file-${target}`}
           onChange={e => {
