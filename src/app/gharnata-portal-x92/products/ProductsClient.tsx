@@ -248,6 +248,17 @@ async function compressImageIfNeeded(file: File): Promise<File> {
     const timer = setTimeout(() => resolve(file), 3500);
 
     try {
+      // For HEIC/HEIF files, skip canvas compression and upload directly
+      // The server-side /api/admin/uploads handler will optimize them
+      const heicExtensions = [".heic", ".heif"];
+      const hasHeicExt = heicExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+
+      if (hasHeicExt) {
+        // HEIC/HEIF - skip canvas, upload original, let server optimize
+        resolve(file);
+        return;
+      }
+
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
@@ -297,6 +308,8 @@ async function compressImageIfNeeded(file: File): Promise<File> {
         }
       };
       img.onerror = () => {
+        // Image API couldn't load (e.g., HEIC/HEIF not supported by browser)
+        // Fall back to original file, server will optimize
         clearTimeout(timer);
         try { URL.revokeObjectURL(url); } catch {}
         resolve(file);
@@ -722,22 +735,24 @@ function getVideoProxyUrl(url: string): string {
       }
 
       // ★ SINGLE state flush — guarantees ALL uploaded files are saved, not just N-1
+      // Only update if we have new files to add
       if (newImages.length > 0 || newVideos.length > 0) {
         setForm(f => ({
           ...f,
           images: [...f.images, ...newImages],
           videos: [...(f.videos || []), ...newVideos],
         }));
+      } else if (errors.length > 0) {
+        // Show all errors if no files were successfully uploaded
+        setUploadStatusTextGallery(
+          `⚠️ ${errors.length} erreur(s) lors du upload: ${errors.join("; ")}`
+        );
       }
     } finally {
       setUploadingGallery(false);
-      if (errors.length === 0 && successCount > 0) {
+      if (successCount > 0 && errors.length === 0) {
         setUploadStatusTextGallery(`✅ ${successCount} fichier(s) uploadé(s) avec succès`);
         setTimeout(() => setUploadStatusTextGallery(""), 4000);
-      } else if (errors.length > 0) {
-        setUploadStatusTextGallery(
-          `⚠️ ${successCount} OK — ${errors.length} erreur(s): ${errors[0]}`
-        );
       }
     }
   }
