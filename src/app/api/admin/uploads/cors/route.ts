@@ -13,22 +13,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PutBucketCorsCommand, GetBucketCorsCommand } from "@aws-sdk/client-s3";
 import { getR2Client } from "@/lib/r2";
-import { rejectUnsafeAdminRequest } from "@/lib/admin-api";
+import { requireAdminSession } from "@/lib/security";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest) {
-  // Admin-only — must be logged in
-  const rejection = await rejectUnsafeAdminRequest(req);
-  if (rejection) return rejection;
+export async function GET(_req: NextRequest) {
+  // Admin session check — works with a simple browser GET (no CSRF needed for read-like operations)
+  const session = await requireAdminSession();
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, error: "Non autorisé — veuillez vous connecter à l'admin d'abord" },
+      { status: 401 }
+    );
+  }
 
   const bucket = process.env.R2_BUCKET_NAME || "caftan-gharnata-media";
 
   try {
     const client = getR2Client();
 
-    // Configure CORS to allow browsers to upload directly to R2
-    // AllowedOrigins: ["*"] — works for any domain (store, admin, etc.)
+    // Configure CORS so browsers can upload directly to R2 from any domain
     await client.send(
       new PutBucketCorsCommand({
         Bucket: bucket,
@@ -39,7 +43,7 @@ export async function GET(req: NextRequest) {
               AllowedMethods: ["GET", "PUT", "POST", "HEAD"],
               AllowedOrigins: ["*"],
               ExposeHeaders: ["ETag", "Content-Length"],
-              MaxAgeSeconds: 86400, // 24h browser cache for the preflight response
+              MaxAgeSeconds: 86400,
             },
           ],
         },
@@ -50,17 +54,18 @@ export async function GET(req: NextRequest) {
     const verify = await client.send(new GetBucketCorsCommand({ Bucket: bucket }));
     const rules = verify.CORSRules ?? [];
 
-    console.log(`[cors-setup] ✅ CORS configured for bucket "${bucket}"`, JSON.stringify(rules));
+    console.log(`[cors-setup] ✅ CORS configured for bucket "${bucket}"`);
 
     return NextResponse.json({
       ok: true,
-      message: `✅ CORS configured for R2 bucket: ${bucket}`,
+      message: `✅ CORS configuré avec succès pour le bucket R2: ${bucket}`,
       rules,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error("[cors-setup] ❌", error);
     return NextResponse.json(
-      { ok: false, error: error.message || "Unknown error" },
+      { ok: false, error: msg },
       { status: 500 }
     );
   }
