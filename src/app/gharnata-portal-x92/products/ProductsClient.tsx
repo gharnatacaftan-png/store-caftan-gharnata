@@ -473,52 +473,116 @@ function getVideoProxyUrl(url: string): string {
     sessionHdrs: Record<string, string>,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/admin/uploads", true);
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunks (under Vercel's 4.5MB limit)
+    
+    // If file is small, use the standard FormData proxy
+    if (file.size <= CHUNK_SIZE) {
+      return new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/admin/uploads", true);
 
-      // Add CSRF headers
-      for (const [key, val] of Object.entries(sessionHdrs)) {
-        xhr.setRequestHeader(key, val);
-      }
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) {
-          const pct = Math.round((e.loaded / e.total) * 100);
-          const loadedMb = e.loaded / 1024 / 1024;
-          const totalMb = e.total / 1024 / 1024;
-          onProgress(pct, loadedMb, totalMb);
+        for (const [key, val] of Object.entries(sessionHdrs)) {
+          xhr.setRequestHeader(key, val);
         }
-      };
 
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText);
-            if (res.ok && res.files && res.files.length > 0) {
-              resolve(res.files[0].url);
-            } else {
-              reject(new Error(res.error || "Erreur inconnue du serveur"));
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgress) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            const loadedMb = e.loaded / 1024 / 1024;
+            const totalMb = e.total / 1024 / 1024;
+            onProgress(pct, loadedMb, totalMb);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const res = JSON.parse(xhr.responseText);
+              if (res.ok && res.files && res.files.length > 0) {
+                resolve(res.files[0].url);
+              } else {
+                reject(new Error(res.error || "Erreur inconnue du serveur"));
+              }
+            } catch {
+              reject(new Error("Réponse serveur invalide"));
             }
-          } catch {
-            reject(new Error("Réponse serveur invalide"));
-          }
-        } else {
-          if (xhr.status === 413) {
-            reject(new Error("Fichier trop volumineux (Limite Vercel: 4.5 Mo). Utilisez un lien vidéo."));
           } else {
-            reject(new Error(`Erreur serveur HTTP ${xhr.status}`));
+            reject(new Error(`Erreur HTTP ${xhr.status}`));
           }
-        }
-      };
+        };
 
-      xhr.onerror = () => reject(new Error("Erreur réseau (connexion interrompue)"));
-      xhr.ontimeout = () => reject(new Error("Timeout: la connexion est trop lente"));
-      
-      const formData = new FormData();
-      formData.append("files", file);
-      xhr.send(formData);
+        xhr.onerror = () => reject(new Error("Erreur réseau (connexion interrompue)"));
+        xhr.ontimeout = () => reject(new Error("Timeout: la connexion est trop lente"));
+        
+        const formData = new FormData();
+        formData.append("files", file);
+        xhr.send(formData);
+      });
+    }
+
+    // MULTIPART CHUNKED UPLOAD FOR LARGE FILES (> 4MB)
+    // 1. Start Upload
+    const startRes = await fetch("/api/admin/uploads/multipart", {
+      method: "POST",
+      headers: { ...sessionHdrs, "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, fileType: file.type }),
     });
+    if (!startRes.ok) throw new Error("Impossible d'initialiser l'upload de la vidéo.");
+    const { uploadId, key } = await startRes.json();
+    
+    const parts: { eTag: string; partNumber: number }[] = [];
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let loadedBytes = 0;
+    
+    // 2. Upload Chunks sequentially
+    for (let partNumber = 1; partNumber <= totalChunks; partNumber++) {
+      const start = (partNumber - 1) * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+      
+      const chunkRes = await fetch(`/api/admin/uploads/multipart?uploadId=${encodeURIComponent(uploadId)}&key=${encodeURIComponent(key)}&partNumber=${partNumber}`, {
+        method: "PUT",
+        headers: { ...sessionHdrs, "Content-Type": "application/octet-stream" },
+        body: chunk,
+      });
+      
+      if (!chunkRes.ok) {
+        // Abort on failure
+        await fetch("/api/admin/uploads/multipart", {
+          method: "PATCH",
+          headers: { ...sessionHdrs, "Content-Type": "application/json" },
+          body: JSON.stringify({ uploadId, key, abort: true }),
+        });
+        throw new Error(`Erreur réseau lors de l'envoi du morceau ${partNumber}/${totalChunks}`);
+      }
+      
+      const chunkData = await chunkRes.json();
+      parts.push({ eTag: chunkData.eTag, partNumber });
+      
+      loadedBytes += chunk.size;
+      if (onProgress) {
+        onProgress(
+          Math.round((loadedBytes / file.size) * 100),
+          loadedBytes / 1024 / 1024,
+          file.size / 1024 / 1024
+        );
+      }
+    }
+    
+    // 3. Complete Upload
+    if (onProgress) onProgress(99, file.size / 1024 / 1024, file.size / 1024 / 1024);
+    
+    const completeRes = await fetch("/api/admin/uploads/multipart", {
+      method: "PATCH",
+      headers: { ...sessionHdrs, "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadId, key, parts }),
+    });
+    
+    if (!completeRes.ok) throw new Error("Erreur lors de la finalisation de la vidéo.");
+    const completeData = await completeRes.json();
+    
+    if (onProgress) onProgress(100, file.size / 1024 / 1024, file.size / 1024 / 1024);
+    return completeData.url;
   }
 
   // ─── PRIMARY IMAGE UPLOAD ─────────────────────────────────────────────────
@@ -1330,7 +1394,7 @@ const res = await fetch("/api/admin/products", {
                         )}
                         <input
                           type="file"
-                          accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                          accept="image/*,image/heic,image/heif,.heic,.heif"
                           disabled={uploadingPrimary}
                           onChange={e => handlePrimaryUpload(e.target.files)}
                           className="hidden"
@@ -1365,7 +1429,7 @@ const res = await fetch("/api/admin/products", {
                       <input
                         type="file"
                         multiple
-                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/quicktime,video/webm"
+                        accept="image/*,video/*,image/heic,image/heif,.heic,.heif"
                         disabled={uploadingGallery}
                         onChange={e => handleGalleryUpload(e.target.files)}
                         className="hidden"
