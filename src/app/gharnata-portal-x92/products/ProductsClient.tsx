@@ -485,148 +485,131 @@ export default function ProductsClient({ initialProducts }: { initialProducts: R
 
 function getVideoProxyUrl(url: string): string {
   if (!url) return "";
-  // Normalize legacy proxy paths to the direct R2 public URL (fixMediaUrl)
-  // and request only the first frame (#t=0.1) for a fast thumbnail.
   const direct = fixMediaUrl(url);
   if (!direct) return "";
   return direct.includes("#t=") ? direct : `${direct}#t=0.1`;
 }
 
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // UPLOAD ARCHITECTURE (v3 — clean rewrite inspired by ERP project)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════════════
+  // NEW CLEAN UPLOAD SYSTEM — Direct to R2 via Presigned URLs
+  // ════════════════════════════════════════════════════════════════════════════════
   //
-  // ALL files (images AND videos) use the same 2-step direct upload:
+  // Architecture:
+  //   1. Request presigned URLs from /api/admin/upload (POST with file metadata)
+  //   2. Browser uploads DIRECTLY to R2 using presigned PUT URLs
+  //   3. Confirm completion with /api/admin/upload (PATCH with keys)
+  //   4. Server optimizes images (sharp handles HEIC/HEIF natively)
+  //   5. Store R2 keys in state, display via /api/media/ proxy (works on Djezzy)
   //
-  //   Step 1: POST /api/admin/uploads/presign
-  //           Tiny JSON request → server signs a PUT URL for Cloudflare R2
-  //           No file bytes cross the Vercel boundary → no 4.5 MB limit
-  //           No serverless timeout risk
-  //
-  //   Step 2: PUT presignedUrl  (browser → R2 directly)
-  //           XHR so we get upload progress events
-  //           Works on iOS, Android, Windows — any network speed
-  //
-  // Images also get server-side compression (sharp) via /api/admin/uploads
-  // as a pre-processing step BEFORE the presign flow.
-  // ─────────────────────────────────────────────────────────────────────────
+  // Benefits:
+  //   ✅ No file size limits (500MB+) — bypasses Vercel 4.5MB limit completely
+  //   ✅ No client-side compression — server handles ALL formats including HEIC/HEIF
+  //   ✅ No chunking complexity — single PUT request per file
+  //   ✅ Works on all devices: PC, iPhone, Android, any network
+  //   ✅ Progress events via XHR for upload feedback
+  //   ✅ Sequential uploads with breathing room for mobile RAM
+  // ════════════════════════════════════════════════════════════════════════════════
 
-  async function uploadFile(
-    file: File,
-    sessionHdrs: Record<string, string>,
-    onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
-  ): Promise<string> {
-    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunks (under Vercel's 4.5MB limit)
-    
-    // If file is small, use the standard FormData proxy
-    if (file.size <= CHUNK_SIZE) {
-      return new Promise<string>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/admin/uploads", true);
+  interface UploadFileResult {
+    key: string;
+    presignedUrl: string;
+    publicUrl: string;
+    mimeType: string;
+    kind: "image" | "video";
+    originalName: string;
+    size: number;
+  }
 
-        for (const [key, val] of Object.entries(sessionHdrs)) {
-          xhr.setRequestHeader(key, val);
-        }
+  interface ConfirmedFileResult {
+    key: string;
+    url: string;
+    mimeType: string;
+    size: number;
+    kind: "image" | "video";
+  }
 
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable && onProgress) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            const loadedMb = e.loaded / 1024 / 1024;
-            const totalMb = e.total / 1024 / 1024;
-            onProgress(pct, loadedMb, totalMb);
-          }
-        };
+  async function requestPresignedUrls(
+    files: File[],
+    sessionHdrs: Record<string, string>
+  ): Promise<UploadFileResult[]> {
+    const fileInfos = files.map(f => ({
+      name: f.name,
+      type: f.type || "application/octet-stream",
+      size: f.size,
+    }));
 
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const res = JSON.parse(xhr.responseText);
-              if (res.ok && res.files && res.files.length > 0) {
-                resolve(res.files[0].url);
-              } else {
-                reject(new Error(res.error || "Erreur inconnue du serveur"));
-              }
-            } catch {
-              reject(new Error("Réponse serveur invalide"));
-            }
-          } else {
-            reject(new Error(`Erreur HTTP ${xhr.status}`));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error("Erreur réseau (connexion interrompue)"));
-        xhr.ontimeout = () => reject(new Error("Timeout: la connexion est trop lente"));
-        
-        const formData = new FormData();
-        formData.append("files", file);
-        xhr.send(formData);
-      });
-    }
-
-    // MULTIPART CHUNKED UPLOAD FOR LARGE FILES (> 4MB)
-    // 1. Start Upload
-    const startRes = await fetch("/api/admin/uploads/multipart", {
+    const res = await fetch("/api/admin/upload", {
       method: "POST",
       headers: { ...sessionHdrs, "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: file.name, fileType: file.type }),
+      body: JSON.stringify({ files: fileInfos }),
     });
-    if (!startRes.ok) throw new Error("Impossible d'initialiser l'upload de la vidéo.");
-    const { uploadId, key } = await startRes.json();
-    
-    const parts: { eTag: string; partNumber: number }[] = [];
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    let loadedBytes = 0;
-    
-    // 2. Upload Chunks sequentially
-    for (let partNumber = 1; partNumber <= totalChunks; partNumber++) {
-      const start = (partNumber - 1) * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunk = file.slice(start, end);
-      
-      const chunkRes = await fetch(`/api/admin/uploads/multipart?uploadId=${encodeURIComponent(uploadId)}&key=${encodeURIComponent(key)}&partNumber=${partNumber}`, {
-        method: "PUT",
-        headers: { ...sessionHdrs, "Content-Type": "application/octet-stream" },
-        body: chunk,
-      });
-      
-      if (!chunkRes.ok) {
-        // Abort on failure
-        await fetch("/api/admin/uploads/multipart", {
-          method: "PATCH",
-          headers: { ...sessionHdrs, "Content-Type": "application/json" },
-          body: JSON.stringify({ uploadId, key, abort: true }),
-        });
-        throw new Error(`Erreur réseau lors de l'envoi du morceau ${partNumber}/${totalChunks}`);
-      }
-      
-      const chunkData = await chunkRes.json();
-      parts.push({ eTag: chunkData.eTag, partNumber });
-      
-      loadedBytes += chunk.size;
-      if (onProgress) {
-        onProgress(
-          Math.round((loadedBytes / file.size) * 100),
-          loadedBytes / 1024 / 1024,
-          file.size / 1024 / 1024
-        );
-      }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Presign failed" }));
+      throw new Error(err.error || `Presign failed: ${res.status}`);
     }
-    
-    // 3. Complete Upload
-    if (onProgress) onProgress(99, file.size / 1024 / 1024, file.size / 1024 / 1024);
-    
-    const completeRes = await fetch("/api/admin/uploads/multipart", {
+
+    const data = await res.json();
+    if (!data.ok || !data.files?.length) {
+      throw new Error(data.error || "No presigned URLs returned");
+    }
+
+    return data.files;
+  }
+
+  async function uploadToR2(
+    file: File,
+    presignedUrl: string,
+    onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", presignedUrl, true);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          const loadedMb = e.loaded / 1024 / 1024;
+          const totalMb = e.total / 1024 / 1024;
+          onProgress(pct, loadedMb, totalMb);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.ontimeout = () => reject(new Error("Upload timeout"));
+      xhr.send(file);
+    });
+  }
+
+  async function confirmUploads(
+    keys: string[],
+    sessionHdrs: Record<string, string>
+  ): Promise<ConfirmedFileResult[]> {
+    const res = await fetch("/api/admin/upload", {
       method: "PATCH",
       headers: { ...sessionHdrs, "Content-Type": "application/json" },
-      body: JSON.stringify({ uploadId, key, parts }),
+      body: JSON.stringify({ keys }),
     });
-    
-    if (!completeRes.ok) throw new Error("Erreur lors de la finalisation de la vidéo.");
-    const completeData = await completeRes.json();
-    
-    if (onProgress) onProgress(100, file.size / 1024 / 1024, file.size / 1024 / 1024);
-    return completeData.url;
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Confirm failed" }));
+      throw new Error(err.error || `Confirm failed: ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (!data.ok || !data.files?.length) {
+      throw new Error(data.error || "No confirmed files returned");
+    }
+
+    return data.files;
   }
 
   // ─── PRIMARY IMAGE UPLOAD ─────────────────────────────────────────────────
@@ -634,34 +617,41 @@ function getVideoProxyUrl(url: string): string {
     if (!files || !files[0]) return;
     const rawFile = files[0];
     setUploadingPrimary(true);
-    
-    // Show a LOCAL preview immediately so user sees their photo right away
+
+    // Show LOCAL preview immediately — works for ALL formats including HEIC
     const localPreview = URL.createObjectURL(rawFile);
     setForm(f => ({ ...f, primary_image: localPreview }));
-    
+
     try {
       const hdrs = await csrfHeaders();
-      setUploadStatusTextPrimary(`⚡ Compression de l'image…`);
-      
-      const file = await compressImageIfNeeded(rawFile);
-      setUploadStatusTextPrimary(`⚡ Envoi de l'image…`);
+      setUploadStatusTextPrimary(`⚡ Préparation de l'upload…`);
 
-      const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
+      // 1. Get presigned URL
+      const [presigned] = await requestPresignedUrls([rawFile], hdrs);
+      
+      setUploadStatusTextPrimary(`⚡ Envoi vers le stockage…`);
+
+      // 2. Upload directly to R2
+      await uploadToR2(rawFile, presigned.presignedUrl, (pct, loadedMb, totalMb) => {
         setUploadStatusTextPrimary(
-          `⬆️ Image (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
+          `⬆️ Upload (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
         );
       });
 
-      // Replace local blob with the real R2 URL
-      const newUrl = fixMediaUrl(url);
-      setForm(f => ({ ...f, primary_image: newUrl }));
+      // 3. Confirm & get optimized result
+      setUploadStatusTextPrimary(`⚡ Optimisation serveur…`);
+      const [confirmed] = await confirmUploads([presigned.key], hdrs);
+
+      // 4. Use proxy URL for display (works on Djezzy/mobile)
+      const proxyUrl = `/api/media/${confirmed.key}`;
+      setForm(f => ({ ...f, primary_image: proxyUrl }));
       URL.revokeObjectURL(localPreview);
-      setUploadStatusTextPrimary("✅ Photo uploadée!");
-      console.log("[primary upload] ✅", newUrl);
+      setUploadStatusTextPrimary("✅ Photo uploadée et optimisée!");
+      console.log("[primary upload] ✅", proxyUrl);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[primary upload] ❌", e);
-      // Keep local preview so user still sees their photo
+      // Keep local preview on error
       setUploadStatusTextPrimary(`❌ ${msg}`);
     } finally {
       setUploadingPrimary(false);
@@ -679,82 +669,90 @@ function getVideoProxyUrl(url: string): string {
     const errors: string[] = [];
 
     // Collect ALL results first, then flush to state once at the end
-    // This prevents React batching from losing the last item(s)
     const newImages: string[] = [];
     const newVideos: string[] = [];
 
     try {
-      // Fetch CSRF headers once for the whole batch
       const hdrs = await csrfHeaders();
 
-      // Upload files one by one (sequential = safe on slow mobile networks)
-      for (let i = 0; i < fileList.length; i++) {
+      // 1. Get ALL presigned URLs upfront
+      setUploadStatusTextGallery(`⚡ Préparation de ${fileList.length} fichier(s)…`);
+      const presignedFiles = await requestPresignedUrls(fileList, hdrs);
+
+      // 2. Upload each file sequentially to R2
+      for (let i = 0; i < presignedFiles.length; i++) {
+        const presigned = presignedFiles[i];
         const rawFile = fileList[i];
-        const isVideo =
-          rawFile.type.startsWith("video/") ||
-          /\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i.test(rawFile.name);
-        const kind = isVideo ? "Vidéo" : "Image";
+        const kind = presigned.kind === "video" ? "Vidéo" : "Image";
 
         try {
-          if (!isVideo) setUploadStatusTextGallery(`⚡ Compression ${kind} ${i + 1}/${fileList.length}…`);
-          const file = isVideo ? rawFile : await compressImageIfNeeded(rawFile);
-          
           setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
 
-          const url = await uploadFile(file, hdrs, (pct, loadedMb, totalMb) => {
+          await uploadToR2(rawFile, presigned.presignedUrl, (pct, loadedMb, totalMb) => {
             setUploadStatusTextGallery(
               `⬆️ ${kind} ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
             );
           });
 
-          const cleanUrl = fixMediaUrl(url);
-          console.log(`[gallery] ✅ ${kind} ${i + 1} →`, cleanUrl);
-
-          // Accumulate instead of calling setForm in the loop
-          if (isVideo) {
-            newVideos.push(cleanUrl);
-          } else {
-            newImages.push(cleanUrl);
-          }
+          console.log(`[gallery] ✅ ${kind} ${i + 1} uploaded to R2`);
 
           successCount++;
-          setUploadStatusTextGallery(`✅ ${kind} ${i + 1}/${fileList.length} OK`);
+          setUploadStatusTextGallery(`✅ ${kind} ${i + 1}/${fileList.length} envoyé`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           console.error(`[gallery] ❌ ${kind} ${i + 1}:`, e);
           errors.push(`${kind} ${i + 1}: ${msg}`);
           setUploadStatusTextGallery(`❌ ${kind} ${i + 1}: ${msg}`);
-          // Always continue — don't abort the whole batch on a single failure
         }
 
-        // ★ Breathing room between files — gives mobile browsers time to free RAM
-        // (prevents the last-file crash on low-memory Android/iPhone)
-        if (i < fileList.length - 1) {
+        // Breathing room for mobile RAM
+        if (i < presignedFiles.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
 
-      // ★ SINGLE state flush — guarantees ALL uploaded files are saved, not just N-1
-      // Only update if we have new files to add
-      if (newImages.length > 0 || newVideos.length > 0) {
-        setForm(f => ({
-          ...f,
-          images: [...f.images, ...newImages],
-          videos: [...(f.videos || []), ...newVideos],
-        }));
+      // 3. Confirm ALL uploads at once, get optimized results
+      if (successCount > 0) {
+        setUploadStatusTextGallery(`⚡ Optimisation serveur…`);
+        const keys = presignedFiles.slice(0, successCount).map(f => f.key);
+        const confirmed = await confirmUploads(keys, hdrs);
+
+        // 4. Convert to proxy URLs and accumulate
+        for (const file of confirmed) {
+          const proxyUrl = `/api/media/${file.key}`;
+          if (file.kind === "video") {
+            newVideos.push(proxyUrl);
+          } else {
+            newImages.push(proxyUrl);
+          }
+        }
+
+        // 5. SINGLE state flush — all files saved atomically
+        if (newImages.length > 0 || newVideos.length > 0) {
+          setForm(f => ({
+            ...f,
+            images: [...f.images, ...newImages],
+            videos: [...(f.videos || []), ...newVideos],
+          }));
+        }
       } else if (errors.length > 0) {
-        // Show all errors if no files were successfully uploaded
         setUploadStatusTextGallery(
-          `⚠️ ${errors.length} erreur(s) lors du upload: ${errors.join("; ")}`
+          `⚠️ ${errors.length} erreur(s): ${errors.join("; ")}`
         );
       }
     } finally {
       setUploadingGallery(false);
       if (successCount > 0 && errors.length === 0) {
-        setUploadStatusTextGallery(`✅ ${successCount} fichier(s) uploadé(s) avec succès`);
+        setUploadStatusTextGallery(`✅ ${successCount} fichier(s) uploadé(s) et optimisés`);
         setTimeout(() => setUploadStatusTextGallery(""), 4000);
+      } else if (errors.length > 0) {
+        setUploadStatusTextGallery(
+          `⚠️ ${successCount} OK — ${errors.length} erreur(s): ${errors[0]}`
+        );
       }
     }
+  }
+
   }
 
   async function handleSave() {
