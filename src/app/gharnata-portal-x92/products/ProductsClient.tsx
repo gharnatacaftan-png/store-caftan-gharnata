@@ -11,6 +11,7 @@ import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 import { csrfHeaders } from "@/lib/client-csrf";
 import { parseVideoEmbedUrl } from "@/lib/video-embed";
+import imageCompression from "browser-image-compression";
 
 export interface D1ProductItem {
   id: number | string;
@@ -491,22 +492,7 @@ function getVideoProxyUrl(url: string): string {
 }
 
   // ═════════════════════════════════════════════════════════════════════════════════
-  // PROXY UPLOAD SYSTEM — Files go through /api/admin/uploads (Vercel server)
-  // ════════════════════════════════════════════════════════════════════════════════
-  //
-  // Architecture:
-  //   Browser ──FormData POST──> caftan-gharnata.com/api/admin/uploads
-  //                                      │
-  //                              Vercel server (Node.js)
-  //                                      │  (private S3 credentials, server-side)
-  //                                      ▼
-  //                              Cloudflare R2 (S3 API, internal)
-  //
-  // Why this works in Algeria:
-  //   ✅ Browser NEVER contacts r2.cloudflarestorage.com or r2.dev directly
-  //   ✅ Only talks to our own domain (caftan-gharnata.com) — never blocked
-  //   ✅ Server optimizes images with sharp (HEIC/HEIF → WebP)
-  //   ✅ Sequential uploads with breathing room for mobile RAM
+  // CLOUDFLARE WORKER UPLOAD SYSTEM — Bypasses Vercel 4.5MB limit
   // ════════════════════════════════════════════════════════════════════════════════
 
   interface ProxyUploadResult {
@@ -516,26 +502,47 @@ function getVideoProxyUrl(url: string): string {
     size: number;
   }
 
-  /**
-   * Upload a single file to /api/admin/uploads via FormData.
-   * Returns the stored key and proxy URL. No presigned URL needed.
-   */
   async function uploadFileViaProxy(
     file: File,
     sessionHdrs: Record<string, string>,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<ProxyUploadResult> {
+    
+    // We first ask our Vercel API for a temporary upload token/secret
+    const authRes = await fetch("/api/admin/upload-auth", {
+      headers: sessionHdrs
+    });
+    const authData = await authRes.json();
+    if (!authData.secret) throw new Error("Could not get upload authorization");
+
+    // Client-side optimization for images to save bandwidth & convert HEIC
+    let finalFile = file;
+    const isImage = file.type.startsWith("image/") || /\.(heic|heif|png|jpg|jpeg)$/i.test(file.name);
+    
+    if (isImage) {
+      if (onProgress) onProgress(0, 0, 0); // show initial progress
+      try {
+        finalFile = await imageCompression(file, {
+          maxSizeMB: 2,
+          maxWidthOrHeight: 1920,
+          useWebWorker: true,
+          fileType: "image/webp"
+        });
+      } catch (err) {
+        console.warn("Client compression failed, using original", err);
+      }
+    }
+
     return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append("files", file);
+      const ext = finalFile.name.split('.').pop() || "bin";
+      const key = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/admin/uploads", true);
+      // Directly hit the Cloudflare Worker attached to our domain
+      xhr.open("POST", `https://www.caftan-gharnata.com/api/r2-upload/upload?key=${encodeURIComponent(key)}`, true);
 
-      // Inject CSRF + session headers (no Content-Type — browser sets multipart boundary)
-      for (const [k, v] of Object.entries(sessionHdrs)) {
-        xhr.setRequestHeader(k, v);
-      }
+      xhr.setRequestHeader("X-Admin-Secret", authData.secret);
+      xhr.setRequestHeader("Content-Type", finalFile.type || "application/octet-stream");
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -548,27 +555,27 @@ function getVideoProxyUrl(url: string): string {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const data = JSON.parse(xhr.responseText);
-            if (data.ok && data.files?.[0]) {
-              resolve(data.files[0] as ProxyUploadResult);
+            if (data.ok) {
+              resolve({
+                url: `/media/${key}`,
+                key: key,
+                kind: isImage ? "image" : "video",
+                size: finalFile.size
+              });
             } else {
               reject(new Error(data.error || "Upload response invalid"));
             }
           } catch {
-            reject(new Error("Invalid JSON from upload server"));
+            reject(new Error("Invalid JSON from upload worker"));
           }
         } else {
-          try {
-            const err = JSON.parse(xhr.responseText);
-            reject(new Error(err.error || `Upload failed: HTTP ${xhr.status}`));
-          } catch {
-            reject(new Error(`Upload failed: HTTP ${xhr.status}`));
-          }
+          reject(new Error(`Upload failed: HTTP ${xhr.status}`));
         }
       };
 
       xhr.onerror = () => reject(new Error("Network error during upload"));
       xhr.ontimeout = () => reject(new Error("Upload timeout"));
-      xhr.send(formData);
+      xhr.send(finalFile); // Send raw file, not FormData
     });
   }
 
@@ -599,8 +606,8 @@ function getVideoProxyUrl(url: string): string {
         );
       });
 
-      // Use /api/media/ proxy for display (works on Djezzy/mobile)
-      const proxyUrl = `/api/media/${result.key}`;
+      // Use /media/ proxy for display (works on Djezzy/mobile)
+      const proxyUrl = result.url;
       setForm(f => ({ ...f, primary_image: proxyUrl }));
       if (localPreview) URL.revokeObjectURL(localPreview);
       setUploadStatusTextPrimary("✅ Photo uploadée et optimisée!");
@@ -647,7 +654,7 @@ function getVideoProxyUrl(url: string): string {
             );
           });
 
-          const proxyUrl = `/api/media/${result.key}`;
+          const proxyUrl = result.url;
           if (result.kind === "video" || isVideo) {
             newVideos.push(proxyUrl);
           } else {

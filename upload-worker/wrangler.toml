@@ -1,0 +1,16 @@
+name = "caftan-gharnata-upload"
+main = "src/worker.ts"
+compatibility_date = "2026-08-01"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "caftan-granada-media"
+
+# Route matching API upload/media requests under caftan-gharnata.com
+routes = [
+  { pattern = "www.caftan-gharnata.com/api/r2-upload/*", zone_name = "caftan-gharnata.com" },
+  { pattern = "www.caftan-gharnata.com/media/*", zone_name = "caftan-gharnata.com" }
+]
+
+[vars]
+# Do not store sensitive secrets here, use `wrangler secret put ADMIN_SESSION_SECRET`

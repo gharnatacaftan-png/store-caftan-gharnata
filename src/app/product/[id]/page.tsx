@@ -140,6 +140,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
     if (!url) return "";
     if (url.startsWith("http://") || url.startsWith("https://")) return url;
     if (url.startsWith("/api/media/")) return `${R2_PUBLIC_BASE}/${url.slice("/api/media/".length)}`;
+    if (url.startsWith("/media/")) return `${R2_PUBLIC_BASE}/${url.slice("/media/".length)}`;
     if (url.startsWith("/api/stream/")) return `${R2_PUBLIC_BASE}/${url.slice("/api/stream/".length)}`;
     if (url.startsWith("/images/") || url.startsWith("/favicon")) return url;
     return `${R2_PUBLIC_BASE}/${url.replace(/^\/+/, "")}`;
