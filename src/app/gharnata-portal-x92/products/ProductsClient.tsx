@@ -753,8 +753,6 @@ function getVideoProxyUrl(url: string): string {
     }
   }
 
-  }
-
   async function handleSave() {
     const title = form.title_ar.trim() || form.title_fr.trim() || form.title_en.trim();
 
