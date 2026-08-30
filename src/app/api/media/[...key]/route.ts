@@ -52,6 +52,29 @@ export async function GET(
       return new NextResponse("Media not found", { status: 404 });
     }
 
+    const isHeic = key.match(/\.(heic|heif)$/i) || r2.ContentType?.match(/heic|heif/i);
+    if (isHeic) {
+      try {
+        const byteArray = await r2.Body.transformToByteArray();
+        const buffer = Buffer.from(byteArray);
+        const sharpModule = await import("sharp");
+        const sharp = sharpModule.default ?? sharpModule;
+        const converted = await sharp(buffer).webp({ quality: 85 }).toBuffer();
+
+        return new NextResponse(converted, {
+          status: 200,
+          headers: {
+            "Content-Type": "image/webp",
+            "Content-Length": String(converted.length),
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": etag,
+          },
+        });
+      } catch (heicErr) {
+        console.error("[api/media] HEIC conversion failed, falling back:", heicErr);
+      }
+    }
+
     const isVideo = key.match(/\.(mp4|webm|mov|mkv|avi|3gp|mpeg|wmv|m4v)$/i) || r2.ContentType?.startsWith("video/");
 
     const headers: Record<string, string> = {

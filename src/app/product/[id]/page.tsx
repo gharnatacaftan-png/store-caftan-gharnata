@@ -138,6 +138,13 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
 
   function resolveMediaUrl(url: string): string {
     if (!url) return "";
+    if (url.match(/\.(heic|heif)$/i)) {
+      if (url.startsWith("/api/media/")) return url;
+      if (url.startsWith("/")) return `/api/media${url}`;
+      const match = url.match(/uploads\/.+/i);
+      if (match) return `/api/media/${match[0]}`;
+      return url;
+    }
     if (url.startsWith("http://") || url.startsWith("https://")) return url;
     if (url.startsWith("/api/media/")) return `${R2_PUBLIC_BASE}/${url.slice("/api/media/".length)}`;
     if (url.startsWith("/media/")) return `${R2_PUBLIC_BASE}/${url.slice("/media/".length)}`;
