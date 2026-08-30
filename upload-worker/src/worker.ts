@@ -51,6 +51,12 @@ export default {
       });
     }
 
+    const MAX_SIZE = 500 * 1024 * 1024; // 500MB
+    const contentLength = request.headers.get("Content-Length");
+    if (contentLength && parseInt(contentLength) > MAX_SIZE) {
+      return new Response(JSON.stringify({ error: "File too large" }), { status: 413 });
+    }
+
     try {
       // 3. Upload directly to R2 bucket using streaming body
       await env.MEDIA_BUCKET.put(key, request.body, {

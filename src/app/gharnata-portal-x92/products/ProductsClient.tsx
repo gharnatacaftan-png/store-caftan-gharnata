@@ -12,6 +12,7 @@ import { t } from "@/lib/i18n";
 import { csrfHeaders } from "@/lib/client-csrf";
 import { parseVideoEmbedUrl } from "@/lib/video-embed";
 import imageCompression from "browser-image-compression";
+import heic2any from "heic2any";
 
 export interface D1ProductItem {
   id: number | string;
@@ -517,19 +518,31 @@ function getVideoProxyUrl(url: string): string {
 
     // Client-side optimization for images to save bandwidth & convert HEIC
     let finalFile = file;
-    const isImage = file.type.startsWith("image/") || /\.(heic|heif|png|jpg|jpeg)$/i.test(file.name);
+    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || "");
+    const isImage = file.type.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(file.name) || isHeic;
     
     if (isImage) {
       if (onProgress) onProgress(0, 0, 0); // show initial progress
       try {
-        finalFile = await imageCompression(file, {
+        let fileToCompress = file;
+        
+        // If HEIC, convert to JPEG blob first
+        if (isHeic) {
+          const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 });
+          const blob = Array.isArray(converted) ? converted[0] : converted;
+          fileToCompress = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), {
+            type: "image/jpeg"
+          });
+        }
+
+        finalFile = await imageCompression(fileToCompress, {
           maxSizeMB: 2,
           maxWidthOrHeight: 1920,
           useWebWorker: true,
           fileType: "image/webp"
         });
       } catch (err) {
-        console.warn("Client compression failed, using original", err);
+        console.warn("Client compression/conversion failed, using original", err);
       }
     }
 
