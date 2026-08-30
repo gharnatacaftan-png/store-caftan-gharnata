@@ -527,7 +527,8 @@ function getVideoProxyUrl(url: string): string {
     sessionHdrs: Record<string, string>,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<ProxyUploadResult> {
-    
+    const fileToUpload = await ensureJpegIfHeic(file);
+
     // Get upload authorization from Vercel (same origin, no CORS)
     const authRes = await fetch("/api/admin/upload-auth", {
       headers: sessionHdrs
@@ -536,17 +537,17 @@ function getVideoProxyUrl(url: string): string {
     if (!authData.secret) throw new Error("Could not get upload authorization");
 
     // Determine file type
-    const isImage = file.type.startsWith("image/") || /\.(heic|heif|png|jpg|jpeg|webp|avif|gif|bmp|tiff|jfif)$/i.test(file.name);
+    const isImage = fileToUpload.type.startsWith("image/") || /\.(heic|heif|png|jpg|jpeg|webp|avif|gif|bmp|tiff|jfif)$/i.test(fileToUpload.name);
 
     return new Promise((resolve, reject) => {
-      const ext = file.name.split('.').pop() || "bin";
+      const ext = fileToUpload.name.split('.').pop() || "bin";
       const key = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `https://caftan-gharnata-upload.caftan-gharnata.workers.dev/api/r2-upload/upload?key=${encodeURIComponent(key)}`, true);
 
       xhr.setRequestHeader("X-Admin-Secret", authData.secret);
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.setRequestHeader("Content-Type", fileToUpload.type || "application/octet-stream");
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -564,7 +565,7 @@ function getVideoProxyUrl(url: string): string {
                 url: `/api/media/${key}`,
                 key: key,
                 kind: isImage ? "image" : "video",
-                size: file.size
+                size: fileToUpload.size
               });
             } else {
               reject(new Error(data.error || "Upload response invalid"));
@@ -579,7 +580,7 @@ function getVideoProxyUrl(url: string): string {
 
       xhr.onerror = () => reject(new Error("Network error during upload"));
       xhr.ontimeout = () => reject(new Error("Upload timeout"));
-      xhr.send(file); // Send raw file directly — Worker accepts any type/size up to 500MB
+      xhr.send(fileToUpload);
     });
   }
 

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
+import { resolveMediaUrl } from "@/lib/media-utils";
 import type { Product } from "@/lib/types";
 
 export function NewArrivalsSection({ products }: { products: Product[] }) {
@@ -55,7 +56,7 @@ export function NewArrivalsSection({ products }: { products: Product[] }) {
               <Link href={`/product/${product.id}`} className="group bg-background rounded-xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 block relative border border-gray-100">
                 <div className="relative h-48 sm:h-64 md:h-80 overflow-hidden">
                   <Image
-                    src={product.images?.[0] || "/images/hero_caftan.webp"}
+                    src={resolveMediaUrl(product.primary_image || product.images?.[0])}
                     alt={product.name}
                     fill
                     unoptimized

@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import LogoLoop from "@/components/LogoLoop";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
+import { resolveMediaUrl } from "@/lib/media-utils";
 
 function SectionTitle({ children, sub }: { children: string; sub?: string }) {
   return (
@@ -75,7 +76,7 @@ export function CategoriesSection({ categories }: { categories: CategoryItem[] }
             className="relative w-[75vw] max-w-[280px] h-[400px] rounded-2xl overflow-hidden shadow-xl shrink-0 snap-center group/card block"
           >
             <Image
-              src={category.image}
+              src={resolveMediaUrl(category.image)}
               alt={category.title}
               fill
               className="object-cover transition-transform duration-700 group-hover/card:scale-110"
@@ -116,7 +117,7 @@ export function CategoriesSection({ categories }: { categories: CategoryItem[] }
               className="relative w-80 h-96 rounded-2xl overflow-hidden shadow-2xl shrink-0 group/card block"
             >
               <Image
-                src={category.image}
+                src={resolveMediaUrl(category.image)}
                 alt={category.title}
                 fill
                 className="object-cover transition-transform duration-700 group-hover/card:scale-110"

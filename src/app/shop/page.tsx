@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { Product } from "@/lib/types";
 import { useLang } from "@/hooks/useLang";
 import { t, Lang } from "@/lib/i18n";
+import { resolveMediaUrl } from "@/lib/media-utils";
 
 const CATEGORY_IDS = ["all", "caftan", "kabyle", "blouza", "karakou", "hotesse"] as const;
 type CatId = typeof CATEGORY_IDS[number];
@@ -279,7 +280,7 @@ function ShopContent() {
                     >
                       <div className="relative h-48 sm:h-64 md:h-80 lg:h-96 overflow-hidden">
                         <Image
-                          src={product.images?.[0] || "/images/hero_caftan.webp"}
+                          src={resolveMediaUrl(product.primary_image || product.images?.[0])}
                           alt={product.name}
                           fill
                           unoptimized

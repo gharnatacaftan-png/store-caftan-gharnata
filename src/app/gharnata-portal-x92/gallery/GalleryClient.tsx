@@ -6,6 +6,8 @@ import { Images, Loader2, RefreshCcw, UploadCloud, AlertTriangle, CheckCircle2, 
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 import { HERO_DEFAULT_IMAGE, categoryDefaultImage } from "@/lib/media-defaults";
+import { resolveMediaUrl, uploadFileViaProxy } from "@/lib/media-utils";
+import { csrfHeaders } from "@/lib/client-csrf";
 
 interface CatRow {
   id: number;
@@ -36,43 +38,11 @@ export default function GalleryClient({
     return data.csrfToken;
   }
 
-  async function ensureJpegIfHeic(file: File): Promise<File> {
-    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || "");
-    if (!isHeic) return file;
-
-    try {
-      const heic2anyModule = await import("heic2any");
-      const convert = heic2anyModule.default || heic2anyModule;
-      const result = await convert({
-        blob: file,
-        toType: "image/jpeg",
-        quality: 0.98, // Ultra-high quality JPEG
-      });
-      const blob = Array.isArray(result) ? result[0] : result;
-      const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
-      return new File([blob], newName, { type: "image/jpeg" });
-    } catch (err) {
-      console.warn("HEIC conversion skipped or failed:", err);
-      return file;
-    }
-  }
-
-  // Upload a single image file to R2 → returns the full public URL.
+  // Upload a single image file via Cloudflare Worker (handles HEIC to JPEG & up to 500MB without Vercel payload limits)
   async function uploadImage(file: File): Promise<string> {
-    const fileToUpload = await ensureJpegIfHeic(file);
-    const fd = new FormData();
-    fd.append("files", fileToUpload);
-    const csrf = await getCsrf();
-    const res = await fetch("/api/admin/uploads", {
-      method: "POST",
-      headers: { "x-csrf-token": csrf },
-      body: fd,
-    });
-    const data = await res.json();
-    if (!res.ok || !data.ok || !data.files?.[0]?.url) {
-      throw new Error(data.error || "upload failed");
-    }
-    return data.files[0].url as string;
+    const hdrs = await csrfHeaders();
+    const result = await uploadFileViaProxy(file, hdrs);
+    return result.url;
   }
 
   // Persist a hero/category image change via the admin gallery API.
@@ -232,7 +202,7 @@ export default function GalleryClient({
             {/* Preview */}
             <div className="relative w-full lg:w-80 h-44 lg:h-52 rounded-xl overflow-hidden border border-white/10 bg-black/40 shrink-0">
               <Image
-                src={heroImage || HERO_DEFAULT_IMAGE}
+                src={resolveMediaUrl(heroImage || HERO_DEFAULT_IMAGE)}
                 alt="hero"
                 fill
                 unoptimized
@@ -278,7 +248,7 @@ export default function GalleryClient({
               <div key={cat.id} className="bg-[#111118] border border-white/5 rounded-2xl overflow-hidden flex flex-col">
                 <div className="relative h-36 overflow-hidden border-b border-white/5 bg-black/40">
                   <Image
-                    src={cat.image_url || categoryDefaultImage(cat.slug)}
+                    src={resolveMediaUrl(cat.image_url || categoryDefaultImage(cat.slug))}
                     alt={cat.name}
                     fill
                     unoptimized
