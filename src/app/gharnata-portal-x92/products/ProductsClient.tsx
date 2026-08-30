@@ -540,7 +540,7 @@ function getVideoProxyUrl(url: string): string {
             const data = JSON.parse(xhr.responseText);
             if (data.ok) {
               resolve({
-                url: `/media/${key}`,
+                url: `/api/media/${key}`,
                 key: key,
                 kind: isImage ? "image" : "video",
                 size: file.size
