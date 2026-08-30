@@ -134,7 +134,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
   // Next.js round-trip + a fresh S3 fetch per request, which is what made the
   // gallery take minutes to load. Stored URLs are already full R2 public URLs
   // (see products-db repairUrl); we only normalize legacy proxy paths here.
-  const R2_PUBLIC_BASE = "https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev";
+  const R2_PUBLIC_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || process.env.R2_PUBLIC_URL || "https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev").replace(/\/$/, "");
 
   function resolveMediaUrl(url: string): string {
     if (!url) return "";
