@@ -22,6 +22,7 @@ export const runtime = "nodejs";
 function normalizeImageUrl(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.trim() === "") return null;
   const url = raw.trim();
+  if (url.startsWith("/api/media/") || url.startsWith("/media/")) return url;
   if (!/^https?:\/\//.test(url) || url.length > 2000) return null;
   return url;
 }

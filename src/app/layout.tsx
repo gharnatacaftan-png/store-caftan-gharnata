@@ -227,6 +227,8 @@ export default async function RootLayout({
         <link rel="icon" type="image/png" sizes="512x512" href="/icon.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="preconnect" href="https://caftan-gharnata-upload.caftan-gharnata.workers.dev" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://caftan-gharnata-upload.caftan-gharnata.workers.dev" />
         <link rel="preconnect" href="https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev" />
         <Script

@@ -397,10 +397,10 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                             <Video className="w-4 h-4 text-white mt-1" />
                           </div>
                         ) : (
-                          <video src={`${mediaUrl}#t=0.1`} className="w-full h-full object-cover pointer-events-none" muted playsInline preload="none" />
+                          <video src={`${mediaUrl}#t=0.1`} className="w-full h-full object-cover pointer-events-none bg-black/60" muted playsInline preload="metadata" />
                         )
                       ) : (
-                        <Image src={mediaUrl} alt={`Thumbnail ${index}`} fill unoptimized loading="lazy" decoding="async" className="object-cover" />
+                        <Image src={mediaUrl} alt={`Thumbnail ${index}`} fill unoptimized loading="eager" fetchPriority="high" className="object-cover" />
                       )}
                       {isVid && embedThumb.type === "direct" && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/30">

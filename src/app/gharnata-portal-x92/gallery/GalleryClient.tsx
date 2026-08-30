@@ -36,10 +36,32 @@ export default function GalleryClient({
     return data.csrfToken;
   }
 
+  async function ensureJpegIfHeic(file: File): Promise<File> {
+    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || "");
+    if (!isHeic) return file;
+
+    try {
+      const heic2anyModule = await import("heic2any");
+      const convert = heic2anyModule.default || heic2anyModule;
+      const result = await convert({
+        blob: file,
+        toType: "image/jpeg",
+        quality: 0.98, // Ultra-high quality JPEG
+      });
+      const blob = Array.isArray(result) ? result[0] : result;
+      const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
+      return new File([blob], newName, { type: "image/jpeg" });
+    } catch (err) {
+      console.warn("HEIC conversion skipped or failed:", err);
+      return file;
+    }
+  }
+
   // Upload a single image file to R2 → returns the full public URL.
   async function uploadImage(file: File): Promise<string> {
+    const fileToUpload = await ensureJpegIfHeic(file);
     const fd = new FormData();
-    fd.append("files", file);
+    fd.append("files", fileToUpload);
     const csrf = await getCsrf();
     const res = await fetch("/api/admin/uploads", {
       method: "POST",
