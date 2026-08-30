@@ -501,6 +501,27 @@ function getVideoProxyUrl(url: string): string {
     size: number;
   }
 
+  async function ensureJpegIfHeic(file: File): Promise<File> {
+    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || "");
+    if (!isHeic) return file;
+
+    try {
+      const heic2anyModule = await import("heic2any");
+      const convert = heic2anyModule.default || heic2anyModule;
+      const result = await convert({
+        blob: file,
+        toType: "image/jpeg",
+        quality: 0.98, // Ultra-high quality JPEG (98%)
+      });
+      const blob = Array.isArray(result) ? result[0] : result;
+      const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
+      return new File([blob], newName, { type: "image/jpeg" });
+    } catch (err) {
+      console.warn("HEIC conversion skipped or failed:", err);
+      return file;
+    }
+  }
+
   async function uploadFileViaProxy(
     file: File,
     sessionHdrs: Record<string, string>,
@@ -568,22 +589,23 @@ function getVideoProxyUrl(url: string): string {
     const rawFile = files[0];
     setUploadingPrimary(true);
 
-    // Show LOCAL blob preview immediately for renderable formats (skip HEIC)
     const isHeic = /\.(heic|heif)$/i.test(rawFile.name) || /image\/(heic|heif)/i.test(rawFile.type || "");
-    let localPreview: string | null = null;
-    if (!isHeic) {
-      localPreview = URL.createObjectURL(rawFile);
-      setForm(f => ({ ...f, primary_image: localPreview }));
+    if (isHeic) {
+      setUploadStatusTextPrimary(`🔄 Conversion HEIC ➔ JPEG haute qualité…`);
     } else {
       setUploadStatusTextPrimary(`📷 ${rawFile.name} — envoi en cours…`);
     }
 
     try {
+      const fileToUpload = await ensureJpegIfHeic(rawFile);
+      const localPreview = URL.createObjectURL(fileToUpload);
+      setForm(f => ({ ...f, primary_image: localPreview }));
+
       const hdrs = await csrfHeaders();
       setUploadStatusTextPrimary(`⚡ Envoi vers le serveur…`);
 
       // Single-step: POST to our own server (never touches r2.cloudflarestorage.com)
-      const result = await uploadFileViaProxy(rawFile, hdrs, (pct, loadedMb, totalMb) => {
+      const result = await uploadFileViaProxy(fileToUpload, hdrs, (pct, loadedMb, totalMb) => {
         setUploadStatusTextPrimary(
           `⬆️ Upload (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
         );
@@ -592,8 +614,8 @@ function getVideoProxyUrl(url: string): string {
       // Use /media/ proxy for display (works on Djezzy/mobile)
       const proxyUrl = result.url;
       setForm(f => ({ ...f, primary_image: proxyUrl }));
-      if (localPreview) URL.revokeObjectURL(localPreview);
-      setUploadStatusTextPrimary("✅ Photo uploadée et optimisée!");
+      URL.revokeObjectURL(localPreview);
+      setUploadStatusTextPrimary("✅ Photo uploadée et optimisée en haute qualité!");
       console.log("[primary upload] ✅", proxyUrl);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -626,12 +648,19 @@ function getVideoProxyUrl(url: string): string {
       for (let i = 0; i < fileList.length; i++) {
         const rawFile = fileList[i];
         const isVideo = rawFile.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi|3gp|m4v|wmv|mpeg)$/i.test(rawFile.name);
+        const isHeic = /\.(heic|heif)$/i.test(rawFile.name) || /image\/(heic|heif)/i.test(rawFile.type || "");
         const kind = isVideo ? "Vidéo" : "Image";
 
         try {
-          setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
+          if (isHeic) {
+            setUploadStatusTextGallery(`🔄 Conversion HEIC ➔ JPEG ${i + 1}/${fileList.length}…`);
+          } else {
+            setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
+          }
 
-          const result = await uploadFileViaProxy(rawFile, hdrs, (pct, loadedMb, totalMb) => {
+          const fileToUpload = await ensureJpegIfHeic(rawFile);
+
+          const result = await uploadFileViaProxy(fileToUpload, hdrs, (pct, loadedMb, totalMb) => {
             setUploadStatusTextGallery(
               `⬆️ ${kind} ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
             );
