@@ -538,7 +538,7 @@ function getVideoProxyUrl(url: string): string {
         finalFile = await imageCompression(fileToCompress, {
           maxSizeMB: 2,
           maxWidthOrHeight: 1920,
-          useWebWorker: true,
+          useWebWorker: false,
           fileType: "image/webp"
         });
       } catch (err) {
@@ -551,8 +551,8 @@ function getVideoProxyUrl(url: string): string {
       const key = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
       const xhr = new XMLHttpRequest();
-      // Directly hit the Cloudflare Worker attached to our domain
-      xhr.open("POST", `https://www.caftan-gharnata.com/api/r2-upload/upload?key=${encodeURIComponent(key)}`, true);
+      // Hit the Cloudflare Worker directly (workers.dev is never DNS-blocked)
+      xhr.open("POST", `https://caftan-gharnata-upload.caftan-gharnata.workers.dev/api/r2-upload/upload?key=${encodeURIComponent(key)}`, true);
 
       xhr.setRequestHeader("X-Admin-Secret", authData.secret);
       xhr.setRequestHeader("Content-Type", finalFile.type || "application/octet-stream");
