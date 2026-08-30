@@ -11,8 +11,6 @@ import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 import { csrfHeaders } from "@/lib/client-csrf";
 import { parseVideoEmbedUrl } from "@/lib/video-embed";
-import imageCompression from "browser-image-compression";
-import heic2any from "heic2any";
 
 export interface D1ProductItem {
   id: number | string;
@@ -509,53 +507,25 @@ function getVideoProxyUrl(url: string): string {
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<ProxyUploadResult> {
     
-    // We first ask our Vercel API for a temporary upload token/secret
+    // Get upload authorization from Vercel (same origin, no CORS)
     const authRes = await fetch("/api/admin/upload-auth", {
       headers: sessionHdrs
     });
     const authData = await authRes.json();
     if (!authData.secret) throw new Error("Could not get upload authorization");
 
-    // Client-side optimization for images to save bandwidth & convert HEIC
-    let finalFile = file;
-    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || "");
-    const isImage = file.type.startsWith("image/") || /\.(png|jpg|jpeg|webp)$/i.test(file.name) || isHeic;
-    
-    if (isImage) {
-      if (onProgress) onProgress(0, 0, 0); // show initial progress
-      try {
-        let fileToCompress = file;
-        
-        // If HEIC, convert to JPEG blob first
-        if (isHeic) {
-          const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.8 });
-          const blob = Array.isArray(converted) ? converted[0] : converted;
-          fileToCompress = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), {
-            type: "image/jpeg"
-          });
-        }
-
-        finalFile = await imageCompression(fileToCompress, {
-          maxSizeMB: 2,
-          maxWidthOrHeight: 1920,
-          useWebWorker: false,
-          fileType: "image/webp"
-        });
-      } catch (err) {
-        console.warn("Client compression/conversion failed, using original", err);
-      }
-    }
+    // Determine file type
+    const isImage = file.type.startsWith("image/") || /\.(heic|heif|png|jpg|jpeg|webp|avif|gif|bmp|tiff|jfif)$/i.test(file.name);
 
     return new Promise((resolve, reject) => {
-      const ext = finalFile.name.split('.').pop() || "bin";
+      const ext = file.name.split('.').pop() || "bin";
       const key = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
       const xhr = new XMLHttpRequest();
-      // Hit the Cloudflare Worker directly (workers.dev is never DNS-blocked)
       xhr.open("POST", `https://caftan-gharnata-upload.caftan-gharnata.workers.dev/api/r2-upload/upload?key=${encodeURIComponent(key)}`, true);
 
       xhr.setRequestHeader("X-Admin-Secret", authData.secret);
-      xhr.setRequestHeader("Content-Type", finalFile.type || "application/octet-stream");
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -573,7 +543,7 @@ function getVideoProxyUrl(url: string): string {
                 url: `/media/${key}`,
                 key: key,
                 kind: isImage ? "image" : "video",
-                size: finalFile.size
+                size: file.size
               });
             } else {
               reject(new Error(data.error || "Upload response invalid"));
@@ -588,7 +558,7 @@ function getVideoProxyUrl(url: string): string {
 
       xhr.onerror = () => reject(new Error("Network error during upload"));
       xhr.ontimeout = () => reject(new Error("Upload timeout"));
-      xhr.send(finalFile); // Send raw file, not FormData
+      xhr.send(file); // Send raw file directly — Worker accepts any type/size up to 500MB
     });
   }
 

@@ -18,7 +18,19 @@ function withSecurityHeaders(response: NextResponse) {
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
   response.headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev https://*.r2.dev https://*.caftan-gharnata.com; media-src 'self' blob: https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev https://*.r2.dev https://*.caftan-gharnata.com; connect-src 'self' https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev https://*.r2.dev https://*.caftan-gharnata.com https://*.r2.cloudflarestorage.com https://api.telegram.org; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "worker-src 'self' blob:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev https://*.r2.dev https://*.caftan-gharnata.com https://*.caftan-gharnata.workers.dev",
+      "media-src 'self' blob: https: http:",
+      "connect-src 'self' https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev https://*.r2.dev https://*.caftan-gharnata.com https://*.r2.cloudflarestorage.com https://api.telegram.org https://api.cloudflare.com https://*.caftan-gharnata.workers.dev",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ")
   );
   return response;
 }
