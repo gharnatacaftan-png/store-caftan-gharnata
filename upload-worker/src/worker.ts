@@ -19,10 +19,17 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Serve files via GET /media/uploads/...
+    // Serve files via GET /media/uploads/... with Range streaming & CDN caching
     if (request.method === "GET" && url.pathname.startsWith("/media/")) {
       const key = url.pathname.slice("/media/".length);
-      const object = await env.MEDIA_BUCKET.get(key);
+      const rangeHeader = request.headers.get("range");
+
+      const options: R2GetOptions = {};
+      if (rangeHeader) {
+        options.range = request.headers;
+      }
+
+      const object = await env.MEDIA_BUCKET.get(key, options);
       
       if (!object) {
         return new Response("Not Found", { status: 404, headers: corsHeaders });
@@ -32,8 +39,22 @@ export default {
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      headers.set("Accept-Ranges", "bytes");
+
+      if (object.range) {
+        const r = object.range as { offset?: number; length?: number };
+        if (r.offset !== undefined && r.length !== undefined) {
+          headers.set("Content-Range", `bytes ${r.offset}-${r.offset + r.length - 1}/${object.size}`);
+          headers.set("Content-Length", String(r.length));
+        }
+      } else {
+        headers.set("Content-Length", String(object.size));
+      }
+
+      const status = rangeHeader && object.range ? 206 : 200;
 
       return new Response(object.body, {
+        status,
         headers,
       });
     }

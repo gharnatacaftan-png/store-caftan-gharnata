@@ -134,7 +134,8 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
   // Next.js round-trip + a fresh S3 fetch per request, which is what made the
   // gallery take minutes to load. Stored URLs are already full R2 public URLs
   // (see products-db repairUrl); we only normalize legacy proxy paths here.
-  const R2_PUBLIC_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || process.env.R2_PUBLIC_URL || "https://pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev").replace(/\/$/, "");
+  const WORKER_CDN_BASE = "https://caftan-gharnata-upload.caftan-gharnata.workers.dev/media";
+  const R2_PUBLIC_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || process.env.R2_PUBLIC_URL || WORKER_CDN_BASE).replace(/\/$/, "");
 
   function resolveMediaUrl(url: string): string {
     if (!url) return "";
@@ -145,12 +146,18 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
       if (match) return `/api/media/${match[0]}`;
       return url;
     }
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    if (url.startsWith("/api/media/")) return `${R2_PUBLIC_BASE}/${url.slice("/api/media/".length)}`;
-    if (url.startsWith("/media/")) return `${R2_PUBLIC_BASE}/${url.slice("/media/".length)}`;
-    if (url.startsWith("/api/stream/")) return `${R2_PUBLIC_BASE}/${url.slice("/api/stream/".length)}`;
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      if (url.includes("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")) {
+        const key = url.split("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")[1];
+        return `${WORKER_CDN_BASE}/${key}`;
+      }
+      return url;
+    }
+    if (url.startsWith("/api/media/")) return `${WORKER_CDN_BASE}/${url.slice("/api/media/".length)}`;
+    if (url.startsWith("/media/")) return `${WORKER_CDN_BASE}/${url.slice("/media/".length)}`;
+    if (url.startsWith("/api/stream/")) return `${WORKER_CDN_BASE}/${url.slice("/api/stream/".length)}`;
     if (url.startsWith("/images/") || url.startsWith("/favicon")) return url;
-    return `${R2_PUBLIC_BASE}/${url.replace(/^\/+/, "")}`;
+    return `${WORKER_CDN_BASE}/${url.replace(/^\/+/, "")}`;
   }
 
   function findLinkedMediaForColor(p: Product | null, colorObj: { id: string; name: string; value: string } | null): string | null {
@@ -390,7 +397,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                             <Video className="w-4 h-4 text-white mt-1" />
                           </div>
                         ) : (
-                          <video src={`${mediaUrl}#t=0.1`} className="w-full h-full object-cover pointer-events-none" muted playsInline preload="metadata" />
+                          <video src={`${mediaUrl}#t=0.1`} className="w-full h-full object-cover pointer-events-none" muted playsInline preload="none" />
                         )
                       ) : (
                         <Image src={mediaUrl} alt={`Thumbnail ${index}`} fill unoptimized loading="lazy" decoding="async" className="object-cover" />
