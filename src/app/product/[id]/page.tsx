@@ -334,7 +334,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
                   return (
                     <video
                       src={resolveMediaUrl(activeMedia)}
-                      className="w-full h-full object-contain pointer-events-none"
+                      className="w-full h-full object-cover pointer-events-none"
                       poster={resolveMediaUrl(product?.primary_image || thumbnailImages[0] || "")}
                       autoPlay muted loop playsInline preload="metadata"
                     />
