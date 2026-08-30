@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
-import { getR2Client, r2PresignedUpload, r2Url, r2Upload } from "@/lib/r2";
+import { getR2Client, r2PresignedUpload, r2Url, ensureBucketCors } from "@/lib/r2";
 import { optimizeUploadedImage } from "@/lib/image-optimize";
 import { rejectUnsafeAdminRequest } from "@/lib/admin-api";
 import { rateLimit, getClientIp, okResponse, errorResponse } from "@/lib/security";
@@ -89,6 +89,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Ensure R2 bucket CORS allows browser-direct PUT (self-healing on first upload)
+    await ensureBucketCors().catch(() => {});
+
     const body = await req.json() as { files: Array<{ name: string; type: string; size: number }> };
     const files = body.files || [];
 

@@ -355,7 +355,7 @@ export default function ProductsClient({ initialProducts }: { initialProducts: R
     sizes: string[];
     colors: Array<{ id: string; name: string; value: string }>;
     color_media_map: Record<string, string[]>;
-    primary_image: string;
+    primary_image: string | null;
     images: string[];
     videos: string[];
     stock: "available" | "out_of_stock";
@@ -560,11 +560,19 @@ function getVideoProxyUrl(url: string): string {
   async function uploadToR2(
     file: File,
     presignedUrl: string,
+    mimeType: string,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", presignedUrl, true);
+
+      // CRITICAL: the presigned URL is signed with a specific Content-Type.
+      // On iOS, HEIC files report file.type === "" so we MUST set it explicitly,
+      // otherwise the signature mismatches and R2 returns 403 → "Network error".
+      if (mimeType) {
+        xhr.setRequestHeader("Content-Type", mimeType);
+      }
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -618,9 +626,17 @@ function getVideoProxyUrl(url: string): string {
     const rawFile = files[0];
     setUploadingPrimary(true);
 
-    // Show LOCAL preview immediately — works for ALL formats including HEIC
-    const localPreview = URL.createObjectURL(rawFile);
-    setForm(f => ({ ...f, primary_image: localPreview }));
+    // Detect non-browser-renderable formats (HEIC/HEIF) so we don't show a broken blob preview.
+    const isHeic = /\.(heic|heif)$/i.test(rawFile.name) || /image\/(heic|heif)/i.test(rawFile.type || "");
+
+    // Show LOCAL preview immediately for renderable formats (jpg/png/webp...)
+    let localPreview: string | null = null;
+    if (!isHeic) {
+      localPreview = URL.createObjectURL(rawFile);
+      setForm(f => ({ ...f, primary_image: localPreview }));
+    } else {
+      setUploadStatusTextPrimary(`📷 ${rawFile.name} — envoi en cours…`);
+    }
 
     try {
       const hdrs = await csrfHeaders();
@@ -632,7 +648,7 @@ function getVideoProxyUrl(url: string): string {
       setUploadStatusTextPrimary(`⚡ Envoi vers le stockage…`);
 
       // 2. Upload directly to R2
-      await uploadToR2(rawFile, presigned.presignedUrl, (pct, loadedMb, totalMb) => {
+      await uploadToR2(rawFile, presigned.presignedUrl, presigned.mimeType, (pct, loadedMb, totalMb) => {
         setUploadStatusTextPrimary(
           `⬆️ Upload (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
         );
@@ -645,7 +661,7 @@ function getVideoProxyUrl(url: string): string {
       // 4. Use proxy URL for display (works on Djezzy/mobile)
       const proxyUrl = `/api/media/${confirmed.key}`;
       setForm(f => ({ ...f, primary_image: proxyUrl }));
-      URL.revokeObjectURL(localPreview);
+      if (localPreview) URL.revokeObjectURL(localPreview);
       setUploadStatusTextPrimary("✅ Photo uploadée et optimisée!");
       console.log("[primary upload] ✅", proxyUrl);
     } catch (e: unknown) {
@@ -688,7 +704,7 @@ function getVideoProxyUrl(url: string): string {
         try {
           setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
 
-          await uploadToR2(rawFile, presigned.presignedUrl, (pct, loadedMb, totalMb) => {
+          await uploadToR2(rawFile, presigned.presignedUrl, presigned.mimeType, (pct, loadedMb, totalMb) => {
             setUploadStatusTextGallery(
               `⬆️ ${kind} ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
             );
@@ -776,7 +792,7 @@ function getVideoProxyUrl(url: string): string {
     try {
       const isEdit = Boolean(form.id);
 
-      const cleanColorMediaMap = normalizeColorMediaMap(form.color_media_map, form.colors, [form.primary_image, ...form.images, ...form.videos]);
+      const cleanColorMediaMap = normalizeColorMediaMap(form.color_media_map, form.colors, [form.primary_image ?? "", ...form.images, ...form.videos]);
 
       const payload = {
         id: form.id,

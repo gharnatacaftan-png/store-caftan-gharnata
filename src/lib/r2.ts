@@ -7,7 +7,7 @@ import "server-only";
 //   This URL is stored as-is in D1. No proxying, no rewrites ever.
 //   Cloudflare R2 natively supports HTTP Range Requests (206) = video streaming works.
 
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutBucketCorsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import dns from "node:dns";
 
@@ -144,6 +144,41 @@ export async function r2PresignedUpload(key: string, contentType: string, expire
   const client = getR2Client();
   const command = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType });
   return getSignedUrl(client, command, { expiresIn });
+}
+
+// ---------------------------------------------------------------------------
+// Ensure the bucket has CORS rules allowing browsers to PUT directly to R2.
+// Memoized per server instance so it only runs once (idempotent).
+// Without this, browser-direct uploads fail with a CORS "Network error".
+// ---------------------------------------------------------------------------
+let corsEnsured: Promise<void> | null = null;
+export function ensureBucketCors(): Promise<void> {
+  if (corsEnsured) return corsEnsured;
+  corsEnsured = (async () => {
+    const client = getR2Client();
+    await client.send(
+      new PutBucketCorsCommand({
+        Bucket: BUCKET,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedHeaders: ["*"],
+              AllowedMethods: ["GET", "PUT", "POST", "HEAD", "DELETE"],
+              AllowedOrigins: ["*"],
+              ExposeHeaders: ["ETag", "Content-Length", "Content-Type"],
+              MaxAgeSeconds: 86400,
+            },
+          ],
+        },
+      })
+    );
+    console.log("[r2] ✅ Bucket CORS ensured (PUT allowed from any origin)");
+  })().catch((err) => {
+    corsEnsured = null; // allow retry on next request
+    console.error("[r2] ⚠️ ensureBucketCors failed:", err);
+    throw err;
+  });
+  return corsEnsured;
 }
 
 // ---------------------------------------------------------------------------
