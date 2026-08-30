@@ -12,6 +12,11 @@ import {
 } from "@/lib/security";
 
 export const runtime = "nodejs";
+// Disable Next.js body-size cap — Vercel free tier still caps at ~4.5MB per request.
+// Videos > 4.5MB will fail on Vercel free. For large videos, users can paste external links (YouTube/TikTok).
+// Set the largest possible limit to allow photos + short clips without hitting Vercel limits.
+export const maxDuration = 60; // seconds
+
 
 function getFileKind(mimeType: string, fileName?: string): "IMAGE" | "VIDEO" | "UNKNOWN" {
   const rawExt = fileName ? path.extname(fileName).toLowerCase() : "";

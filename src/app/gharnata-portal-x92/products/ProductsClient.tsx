@@ -491,133 +491,85 @@ function getVideoProxyUrl(url: string): string {
 }
 
   // ═════════════════════════════════════════════════════════════════════════════════
-  // NEW CLEAN UPLOAD SYSTEM — Direct to R2 via Presigned URLs
+  // PROXY UPLOAD SYSTEM — Files go through /api/admin/uploads (Vercel server)
   // ════════════════════════════════════════════════════════════════════════════════
   //
   // Architecture:
-  //   1. Request presigned URLs from /api/admin/upload (POST with file metadata)
-  //   2. Browser uploads DIRECTLY to R2 using presigned PUT URLs
-  //   3. Confirm completion with /api/admin/upload (PATCH with keys)
-  //   4. Server optimizes images (sharp handles HEIC/HEIF natively)
-  //   5. Store R2 keys in state, display via /api/media/ proxy (works on Djezzy)
+  //   Browser ──FormData POST──> caftan-gharnata.com/api/admin/uploads
+  //                                      │
+  //                              Vercel server (Node.js)
+  //                                      │  (private S3 credentials, server-side)
+  //                                      ▼
+  //                              Cloudflare R2 (S3 API, internal)
   //
-  // Benefits:
-  //   ✅ No file size limits (500MB+) — bypasses Vercel 4.5MB limit completely
-  //   ✅ No client-side compression — server handles ALL formats including HEIC/HEIF
-  //   ✅ No chunking complexity — single PUT request per file
-  //   ✅ Works on all devices: PC, iPhone, Android, any network
-  //   ✅ Progress events via XHR for upload feedback
+  // Why this works in Algeria:
+  //   ✅ Browser NEVER contacts r2.cloudflarestorage.com or r2.dev directly
+  //   ✅ Only talks to our own domain (caftan-gharnata.com) — never blocked
+  //   ✅ Server optimizes images with sharp (HEIC/HEIF → WebP)
   //   ✅ Sequential uploads with breathing room for mobile RAM
   // ════════════════════════════════════════════════════════════════════════════════
 
-  interface UploadFileResult {
-    key: string;
-    presignedUrl: string;
-    publicUrl: string;
-    mimeType: string;
-    kind: "image" | "video";
-    originalName: string;
-    size: number;
-  }
-
-  interface ConfirmedFileResult {
-    key: string;
+  interface ProxyUploadResult {
     url: string;
-    mimeType: string;
+    key: string;
+    kind: string;
     size: number;
-    kind: "image" | "video";
   }
 
-  async function requestPresignedUrls(
-    files: File[],
-    sessionHdrs: Record<string, string>
-  ): Promise<UploadFileResult[]> {
-    const fileInfos = files.map(f => ({
-      name: f.name,
-      type: f.type || "application/octet-stream",
-      size: f.size,
-    }));
-
-    const res = await fetch("/api/admin/upload", {
-      method: "POST",
-      headers: { ...sessionHdrs, "Content-Type": "application/json" },
-      body: JSON.stringify({ files: fileInfos }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Presign failed" }));
-      throw new Error(err.error || `Presign failed: ${res.status}`);
-    }
-
-    const data = await res.json();
-    if (!data.ok || !data.files?.length) {
-      throw new Error(data.error || "No presigned URLs returned");
-    }
-
-    return data.files;
-  }
-
-  async function uploadToR2(
+  /**
+   * Upload a single file to /api/admin/uploads via FormData.
+   * Returns the stored key and proxy URL. No presigned URL needed.
+   */
+  async function uploadFileViaProxy(
     file: File,
-    presignedUrl: string,
-    mimeType: string,
+    sessionHdrs: Record<string, string>,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
-  ): Promise<void> {
+  ): Promise<ProxyUploadResult> {
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("PUT", presignedUrl, true);
+      const formData = new FormData();
+      formData.append("files", file);
 
-      // CRITICAL: the presigned URL is signed with a specific Content-Type.
-      // On iOS, HEIC files report file.type === "" so we MUST set it explicitly,
-      // otherwise the signature mismatches and R2 returns 403 → "Network error".
-      if (mimeType) {
-        xhr.setRequestHeader("Content-Type", mimeType);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/admin/uploads", true);
+
+      // Inject CSRF + session headers (no Content-Type — browser sets multipart boundary)
+      for (const [k, v] of Object.entries(sessionHdrs)) {
+        xhr.setRequestHeader(k, v);
       }
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
           const pct = Math.round((e.loaded / e.total) * 100);
-          const loadedMb = e.loaded / 1024 / 1024;
-          const totalMb = e.total / 1024 / 1024;
-          onProgress(pct, loadedMb, totalMb);
+          onProgress(pct, e.loaded / 1024 / 1024, e.total / 1024 / 1024);
         }
       };
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.ok && data.files?.[0]) {
+              resolve(data.files[0] as ProxyUploadResult);
+            } else {
+              reject(new Error(data.error || "Upload response invalid"));
+            }
+          } catch {
+            reject(new Error("Invalid JSON from upload server"));
+          }
         } else {
-          reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.error || `Upload failed: HTTP ${xhr.status}`));
+          } catch {
+            reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+          }
         }
       };
 
       xhr.onerror = () => reject(new Error("Network error during upload"));
       xhr.ontimeout = () => reject(new Error("Upload timeout"));
-      xhr.send(file);
+      xhr.send(formData);
     });
-  }
-
-  async function confirmUploads(
-    keys: string[],
-    sessionHdrs: Record<string, string>
-  ): Promise<ConfirmedFileResult[]> {
-    const res = await fetch("/api/admin/upload", {
-      method: "PATCH",
-      headers: { ...sessionHdrs, "Content-Type": "application/json" },
-      body: JSON.stringify({ keys }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Confirm failed" }));
-      throw new Error(err.error || `Confirm failed: ${res.status}`);
-    }
-
-    const data = await res.json();
-    if (!data.ok || !data.files?.length) {
-      throw new Error(data.error || "No confirmed files returned");
-    }
-
-    return data.files;
   }
 
   // ─── PRIMARY IMAGE UPLOAD ─────────────────────────────────────────────────
@@ -626,10 +578,8 @@ function getVideoProxyUrl(url: string): string {
     const rawFile = files[0];
     setUploadingPrimary(true);
 
-    // Detect non-browser-renderable formats (HEIC/HEIF) so we don't show a broken blob preview.
+    // Show LOCAL blob preview immediately for renderable formats (skip HEIC)
     const isHeic = /\.(heic|heif)$/i.test(rawFile.name) || /image\/(heic|heif)/i.test(rawFile.type || "");
-
-    // Show LOCAL preview immediately for renderable formats (jpg/png/webp...)
     let localPreview: string | null = null;
     if (!isHeic) {
       localPreview = URL.createObjectURL(rawFile);
@@ -640,26 +590,17 @@ function getVideoProxyUrl(url: string): string {
 
     try {
       const hdrs = await csrfHeaders();
-      setUploadStatusTextPrimary(`⚡ Préparation de l'upload…`);
+      setUploadStatusTextPrimary(`⚡ Envoi vers le serveur…`);
 
-      // 1. Get presigned URL
-      const [presigned] = await requestPresignedUrls([rawFile], hdrs);
-      
-      setUploadStatusTextPrimary(`⚡ Envoi vers le stockage…`);
-
-      // 2. Upload directly to R2
-      await uploadToR2(rawFile, presigned.presignedUrl, presigned.mimeType, (pct, loadedMb, totalMb) => {
+      // Single-step: POST to our own server (never touches r2.cloudflarestorage.com)
+      const result = await uploadFileViaProxy(rawFile, hdrs, (pct, loadedMb, totalMb) => {
         setUploadStatusTextPrimary(
           `⬆️ Upload (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
         );
       });
 
-      // 3. Confirm & get optimized result
-      setUploadStatusTextPrimary(`⚡ Optimisation serveur…`);
-      const [confirmed] = await confirmUploads([presigned.key], hdrs);
-
-      // 4. Use proxy URL for display (works on Djezzy/mobile)
-      const proxyUrl = `/api/media/${confirmed.key}`;
+      // Use /api/media/ proxy for display (works on Djezzy/mobile)
+      const proxyUrl = `/api/media/${result.key}`;
       setForm(f => ({ ...f, primary_image: proxyUrl }));
       if (localPreview) URL.revokeObjectURL(localPreview);
       setUploadStatusTextPrimary("✅ Photo uploadée et optimisée!");
@@ -667,7 +608,6 @@ function getVideoProxyUrl(url: string): string {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[primary upload] ❌", e);
-      // Keep local preview on error
       setUploadStatusTextPrimary(`❌ ${msg}`);
     } finally {
       setUploadingPrimary(false);
@@ -691,29 +631,32 @@ function getVideoProxyUrl(url: string): string {
     try {
       const hdrs = await csrfHeaders();
 
-      // 1. Get ALL presigned URLs upfront
-      setUploadStatusTextGallery(`⚡ Préparation de ${fileList.length} fichier(s)…`);
-      const presignedFiles = await requestPresignedUrls(fileList, hdrs);
-
-      // 2. Upload each file sequentially to R2
-      for (let i = 0; i < presignedFiles.length; i++) {
-        const presigned = presignedFiles[i];
+      // Upload each file sequentially via our own server proxy
+      // Browser NEVER contacts r2.cloudflarestorage.com
+      for (let i = 0; i < fileList.length; i++) {
         const rawFile = fileList[i];
-        const kind = presigned.kind === "video" ? "Vidéo" : "Image";
+        const isVideo = rawFile.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|avi|3gp|m4v|wmv|mpeg)$/i.test(rawFile.name);
+        const kind = isVideo ? "Vidéo" : "Image";
 
         try {
           setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
 
-          await uploadToR2(rawFile, presigned.presignedUrl, presigned.mimeType, (pct, loadedMb, totalMb) => {
+          const result = await uploadFileViaProxy(rawFile, hdrs, (pct, loadedMb, totalMb) => {
             setUploadStatusTextGallery(
               `⬆️ ${kind} ${i + 1}/${fileList.length} (${pct}%) — ${loadedMb.toFixed(1)} / ${totalMb.toFixed(1)} MB`
             );
           });
 
-          console.log(`[gallery] ✅ ${kind} ${i + 1} uploaded to R2`);
+          const proxyUrl = `/api/media/${result.key}`;
+          if (result.kind === "video" || isVideo) {
+            newVideos.push(proxyUrl);
+          } else {
+            newImages.push(proxyUrl);
+          }
 
           successCount++;
           setUploadStatusTextGallery(`✅ ${kind} ${i + 1}/${fileList.length} envoyé`);
+          console.log(`[gallery] ✅ ${kind} ${i + 1}:`, proxyUrl);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           console.error(`[gallery] ❌ ${kind} ${i + 1}:`, e);
@@ -721,50 +664,31 @@ function getVideoProxyUrl(url: string): string {
           setUploadStatusTextGallery(`❌ ${kind} ${i + 1}: ${msg}`);
         }
 
-        // Breathing room for mobile RAM
-        if (i < presignedFiles.length - 1) {
+        // Breathing room for mobile RAM between files
+        if (i < fileList.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
 
-      // 3. Confirm ALL uploads at once, get optimized results
-      if (successCount > 0) {
-        setUploadStatusTextGallery(`⚡ Optimisation serveur…`);
-        const keys = presignedFiles.slice(0, successCount).map(f => f.key);
-        const confirmed = await confirmUploads(keys, hdrs);
+      // Single atomic state flush — all files saved together
+      if (newImages.length > 0 || newVideos.length > 0) {
+        setForm(f => ({
+          ...f,
+          images: [...f.images, ...newImages],
+          videos: [...(f.videos || []), ...newVideos],
+        }));
+      }
 
-        // 4. Convert to proxy URLs and accumulate
-        for (const file of confirmed) {
-          const proxyUrl = `/api/media/${file.key}`;
-          if (file.kind === "video") {
-            newVideos.push(proxyUrl);
-          } else {
-            newImages.push(proxyUrl);
-          }
-        }
-
-        // 5. SINGLE state flush — all files saved atomically
-        if (newImages.length > 0 || newVideos.length > 0) {
-          setForm(f => ({
-            ...f,
-            images: [...f.images, ...newImages],
-            videos: [...(f.videos || []), ...newVideos],
-          }));
-        }
-      } else if (errors.length > 0) {
-        setUploadStatusTextGallery(
-          `⚠️ ${errors.length} erreur(s): ${errors.join("; ")}`
-        );
+      if (successCount === 0 && errors.length > 0) {
+        setUploadStatusTextGallery(`⚠️ ${errors.length} erreur(s): ${errors.join("; ")}`);
       }
     } finally {
       setUploadingGallery(false);
       if (successCount > 0 && errors.length === 0) {
         setUploadStatusTextGallery(`✅ ${successCount} fichier(s) uploadé(s) et optimisés`);
         setTimeout(() => setUploadStatusTextGallery(""), 4000);
-      } else if (errors.length > 0) {
-        setUploadStatusTextGallery(
-          `⚠️ ${successCount} OK — ${errors.length} erreur(s): ${errors[0]}`
-        );
+      } else if (successCount > 0 && errors.length > 0) {
+        setUploadStatusTextGallery(`⚠️ ${successCount} OK — ${errors.length} erreur(s): ${errors[0]}`);
       }
     }
   }
