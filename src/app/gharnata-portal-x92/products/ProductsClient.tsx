@@ -238,39 +238,43 @@ function normalizeDashboardProduct(p: RawProduct): D1ProductItem {
  * Makes uploads 15x faster on Algerian mobile/DSL connections!
  */
 async function compressImageIfNeeded(file: File): Promise<File> {
-  const isImg = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|avif|heic|heif)$/i.test(file.name);
-  if (!isImg || file.size < 300 * 1024) {
-    return file; // Skip videos or small images
+  const isImg = file.type.startsWith("image/") || /\.(jpg|jpeg|png|webp|avif|heic|heif|bmp|tiff|jfif)$/i.test(file.name);
+  if (!isImg) {
+    return file; // Skip videos only
+  }
+
+  // Handle HEIC/HEIF: convert to JPEG first via heic2any, then Canvas will compress
+  const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type || "");
+  let srcFile = file;
+  if (isHeic) {
+    try {
+      const heic2anyModule = await import("heic2any");
+      const convert = heic2anyModule.default || heic2anyModule;
+      const result = await convert({ blob: file, toType: "image/jpeg", quality: 0.95 });
+      const blob = Array.isArray(result) ? result[0] : result;
+      srcFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
+    } catch {
+      srcFile = file;
+    }
   }
 
   return new Promise((resolve) => {
-    // 3.5s Timeout Safety: Never block mobile uploads if Canvas compression hangs on HEIC/mobile photo formats!
-    const timer = setTimeout(() => resolve(file), 3500);
+    // 8s Timeout Safety
+    const timer = setTimeout(() => resolve(srcFile), 8000);
 
     try {
-      // For HEIC/HEIF files, skip canvas compression and upload directly
-      // The server-side /api/admin/uploads handler will optimize them
-      const heicExtensions = [".heic", ".heif"];
-      const hasHeicExt = heicExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
-
-      if (hasHeicExt) {
-        // HEIC/HEIF - skip canvas, upload original, let server optimize
-        resolve(file);
-        return;
-      }
-
       const img = new Image();
-      const url = URL.createObjectURL(file);
+      const url = URL.createObjectURL(srcFile);
       img.onload = () => {
         clearTimeout(timer);
         URL.revokeObjectURL(url);
         try {
           const canvas = document.createElement("canvas");
-          const MAX_DIM = 1800; // Crisp quality for fashion products
+          const MAX_DIM = 1920; // Full HD max — crisp quality for fashion products
           let width = img.width;
           let height = img.height;
 
-          if (!width || !height) { resolve(file); return; }
+          if (!width || !height) { resolve(srcFile); return; }
 
           if (width > height) {
             if (width > MAX_DIM) {
@@ -287,13 +291,13 @@ async function compressImageIfNeeded(file: File): Promise<File> {
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext("2d");
-          if (!ctx) { resolve(file); return; }
+          if (!ctx) { resolve(srcFile); return; }
 
           ctx.drawImage(img, 0, 0, width, height);
 
           canvas.toBlob(
             (blob) => {
-              if (!blob) { resolve(file); return; }
+              if (!blob || blob.size >= srcFile.size) { resolve(srcFile); return; }
               const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
                 type: "image/webp",
                 lastModified: Date.now(),
@@ -301,23 +305,21 @@ async function compressImageIfNeeded(file: File): Promise<File> {
               resolve(compressedFile);
             },
             "image/webp",
-            0.85
+            0.84
           );
         } catch {
-          resolve(file);
+          resolve(srcFile);
         }
       };
       img.onerror = () => {
-        // Image API couldn't load (e.g., HEIC/HEIF not supported by browser)
-        // Fall back to original file, server will optimize
         clearTimeout(timer);
         try { URL.revokeObjectURL(url); } catch {}
-        resolve(file);
+        resolve(srcFile);
       };
       img.src = url;
     } catch {
       clearTimeout(timer);
-      resolve(file);
+      resolve(srcFile);
     }
   });
 }
@@ -527,7 +529,8 @@ function getVideoProxyUrl(url: string): string {
     sessionHdrs: Record<string, string>,
     onProgress?: (pct: number, loadedMb: number, totalMb: number) => void
   ): Promise<ProxyUploadResult> {
-    const fileToUpload = await ensureJpegIfHeic(file);
+    // Compress + convert to WebP (max 1920px) before upload for instant storefront display
+    const fileToUpload = await compressImageIfNeeded(file);
 
     // Get upload authorization from Vercel (same origin, no CORS)
     const authRes = await fetch("/api/admin/upload-auth", {
@@ -592,13 +595,13 @@ function getVideoProxyUrl(url: string): string {
 
     const isHeic = /\.(heic|heif)$/i.test(rawFile.name) || /image\/(heic|heif)/i.test(rawFile.type || "");
     if (isHeic) {
-      setUploadStatusTextPrimary(`🔄 Conversion HEIC ➔ JPEG haute qualité…`);
+      setUploadStatusTextPrimary(`🔄 Conversion HEIC ➔ WebP optimisé…`);
     } else {
-      setUploadStatusTextPrimary(`📷 ${rawFile.name} — envoi en cours…`);
+      setUploadStatusTextPrimary(`🗜️ Compression WebP en cours…`);
     }
 
     try {
-      const fileToUpload = await ensureJpegIfHeic(rawFile);
+      const fileToUpload = await compressImageIfNeeded(rawFile);
       const localPreview = URL.createObjectURL(fileToUpload);
       setForm(f => ({ ...f, primary_image: localPreview }));
 
@@ -659,7 +662,7 @@ function getVideoProxyUrl(url: string): string {
             setUploadStatusTextGallery(`⚡ Envoi ${kind} ${i + 1}/${fileList.length}…`);
           }
 
-          const fileToUpload = await ensureJpegIfHeic(rawFile);
+          const fileToUpload = await compressImageIfNeeded(rawFile);
 
           const result = await uploadFileViaProxy(fileToUpload, hdrs, (pct, loadedMb, totalMb) => {
             setUploadStatusTextGallery(
