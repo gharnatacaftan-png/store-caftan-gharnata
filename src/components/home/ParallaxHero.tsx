@@ -8,6 +8,8 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { useLang } from "@/hooks/useLang";
 import { t } from "@/lib/i18n";
 
+import { resolveMediaUrl } from "@/lib/media-utils";
+
 export function ParallaxHero({ heroImage = "/images/hero_caftan.webp" }: { heroImage?: string }) {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
@@ -25,7 +27,7 @@ export function ParallaxHero({ heroImage = "/images/hero_caftan.webp" }: { heroI
         className="absolute inset-0 z-0"
       >
         <Image
-          src={heroImage}
+          src={resolveMediaUrl(heroImage)}
           alt="قفطان غرناطة"
           fill
           className="object-cover object-center lg:object-contain"

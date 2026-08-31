@@ -1,4 +1,4 @@
-export const WORKER_CDN_BASE = "https://caftan-gharnata-upload.caftan-gharnata.workers.dev/media";
+export const WORKER_CDN_BASE = "https://media.caftan-gharnata.com";
 export const WORKER_UPLOAD_URL = "https://caftan-gharnata-upload.caftan-gharnata.workers.dev/api/r2-upload/upload";
 
 /**
@@ -23,7 +23,7 @@ export function resolveMediaUrl(url: string | null | undefined): string {
     return clean;
   }
 
-  // Rewrite legacy slow dev subdomain (pub-xxx.r2.dev) to Cloudflare Worker CDN Edge
+  // Rewrite legacy slow dev subdomain or worker subdomain to Cloudflare R2 CDN Edge
   if (clean.includes("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")) {
     const key = clean.split("pub-60b4679aa7b4477b838c988b7a0b3d45.r2.dev/")[1];
     return `${WORKER_CDN_BASE}/${key}`;
@@ -33,8 +33,12 @@ export function resolveMediaUrl(url: string | null | undefined): string {
     const key = clean.slice(idx + 8);
     return `${WORKER_CDN_BASE}/${key}`;
   }
+  if (clean.includes("caftan-gharnata.workers.dev/")) {
+    const match = clean.match(/uploads\/.+/i);
+    if (match) return `${WORKER_CDN_BASE}/${match[0]}`;
+  }
 
-  // Rewrite /api/media/ or /media/ proxy paths directly to Worker CDN Edge for maximum speed
+  // Rewrite /api/media/ or /media/ proxy paths directly to CDN Edge for maximum speed
   if (clean.startsWith("/api/media/")) {
     return `${WORKER_CDN_BASE}/${clean.slice("/api/media/".length)}`;
   }
